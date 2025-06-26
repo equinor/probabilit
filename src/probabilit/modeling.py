@@ -2,8 +2,6 @@
 Modeling
 --------
 
-Modeling Monte Carlo analyses as computational graphs.
-
 Probabilit lets the user perform Monte-Carlo sampling using a high-level
 modeling language.
 
@@ -270,7 +268,7 @@ class Node(abc.ABC):
 
             # Sample the node
             assert isinstance(node, Distribution)
-            node.samples_ = node._ppf(q=next(columns))
+            node.samples_ = node._sample(q=next(columns))
 
         # TODO: correlate the samples
 
@@ -284,7 +282,7 @@ class Node(abc.ABC):
             elif isinstance(node, Constant):
                 node.samples_ = node._sample(size=size)
             elif isinstance(node, Distribution):
-                node.samples_ = node._ppf(q=next(columns))
+                node.samples_ = node._sample(q=next(columns))
             elif isinstance(node, Transform):
                 node.samples_ = node._sample()
 
@@ -317,11 +315,14 @@ class Node(abc.ABC):
     def to_graph(self):
         """Convert the computational graph to a networkx MultiDiGraph."""
         nodes = list(self.nodes())
+
+        # Special case if there is only one node
         if len(nodes) == 1:
             G = nx.MultiDiGraph()
             G.add_node(self)
             return G
 
+        # General case
         edge_list = [
             (ancestor, node)
             for node in nodes
@@ -371,10 +372,6 @@ class OverloadMixin:
         return Abs(self)
 
 
-# def Constant(value):
-# return Distribution(sp.stats.uniform, loc=0, scale=0)
-
-
 class Constant(Node, OverloadMixin):
     """A constant is a number."""
 
@@ -390,7 +387,7 @@ class Constant(Node, OverloadMixin):
         return np.ones(size, dtype=type(self.value)) * self.value
 
     def get_parents(self):
-        return []  # No parents
+        return []
 
     def __repr__(self):
         return f"{type(self).__name__}({self.value})"
@@ -415,44 +412,25 @@ class Distribution(Node, OverloadMixin):
             out += f", {kwargs}"
         return out + ")"
 
-    def _ppf(self, q):
-        # todo: assert that random state is not an integer
+    def _sample(self, q):
+        def unpack(arg):
+            return arg.samples_ if isinstance(arg, Node) else arg
+
+        args = tuple(unpack(arg) for arg in self.args)
+        kwargs = {k: unpack(v) for (k, v) in self.kwargs.items()}
+
         distribution = getattr(stats, self.distr)
-
-        args = tuple(
-            arg.samples_ if isinstance(arg, Node) else arg for arg in self.args
-        )
-        kwargs = {
-            k: (v.samples_ if isinstance(v, Node) else v)
-            for (k, v) in self.kwargs.items()
-        }
-
         return distribution(*args, **kwargs).ppf(q)
 
-    def _sample(self, size=None, random_state=None):
-        # todo: assert that random state is not an integer
-        distribution = getattr(stats, self.distr)
-
-        args = tuple(
-            arg.samples_ if isinstance(arg, Node) else arg for arg in self.args
-        )
-        kwargs = {
-            k: (v.samples_ if isinstance(v, Node) else v)
-            for (k, v) in self.kwargs.items()
-        }
-
-        return distribution(*args, **kwargs).rvs(size=size, random_state=random_state)
-
     def get_parents(self):
-        # A distribution has have ancestors if its parameters are Nodes
+        # A distribution only has parents if its parameters are Nodes
         for arg in self.args + tuple(self.kwargs.values()):
             if isinstance(arg, Node):
                 yield arg
 
     @property
     def is_leaf(self):
-        arg_values = self.args + tuple(self.kwargs.values())
-        return not any(isinstance(arg, Node) for arg in arg_values)
+        return list(self.get_parents()) == []
 
 
 # ========================================================
