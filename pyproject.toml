@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools >= 66.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "probabilit"
+version = "0.0.1"
+description = "A Python package for Monte Carlo sampling."
+requires-python = ">= 3.9"
+readme = {file = "README.md", content-type = "text/markdown"}
+authors = [
+    { name = "Tommy"},
+    { name = "Knut"},
+    { name = "Feda"}
+]
+license = {text = "GPL-3.0-only"}
+dependencies = [
+"numpy>=2",
+"scipy",
+"networkx",
+]  
+
+[project.optional-dependencies]
+dev = [
+"ruff",
+"pytest",
+]
+
+[project.urls]
+homepage = "https://github.com/equinor/probabilit"
