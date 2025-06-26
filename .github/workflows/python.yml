@@ -24,7 +24,11 @@ jobs:
         # https://github.com/actions/setup-python?tab=readme-ov-file#caching-packages-dependencies
         cache: 'pip' # caching pip dependencies # 
         cache-dependency-path: |
-          requirements.txt
+          pyproject.toml
+          
+    - name: Install package
+      run: |
+        pip install '.[dev]'
 
     - name: Run ruff format
       run: |
