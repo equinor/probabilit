@@ -10,20 +10,20 @@ modeling language.
 As a first look at the modeling language, let us do some computations.
 We'll use constants before looking at random variables.
 
-Random samples can be drawn from a node using .rvs(), which delegates to scipy:
+Random samples can be drawn from a node using .sample(), which delegates to scipy:
 
 >>> rng = np.random.default_rng(42)
 >>> a = Constant(1)
->>> a.rvs(5, random_state=rng)
+>>> a.sample(5, random_state=rng)
 array([1, 1, 1, 1, 1])
 
 Computational graphs can be built user overloaded Python operators.
 Mixing numbers with nodes is allowed, but at least one expression or term
 must be a probabilit class instance:
 
->>> (a * 3 + 5).rvs(5, random_state=rng)
+>>> (a * 3 + 5).sample(5, random_state=rng)
 array([8, 8, 8, 8, 8])
->>> Add(10, 5, 5).rvs(5, random_state=rng)
+>>> Add(10, 5, 5).sample(5, random_state=rng)
 array([20, 20, 20, 20, 20])
 
 Of course, things get more interesting with probability distributions.
@@ -35,8 +35,8 @@ The names and arguments correspond to scipy distributions (scipy.stats).
 
 The product above is not evaluated untill we sample from it.
 
->>> product.rvs(5, random_state=rng)
-array([ 7.70595305,  5.58346676, 17.96611142,  0.47105231,  3.19092719])
+>>> product.sample(5, random_state=rng)
+array([ 3.32357208,  7.25992397, 13.68470082,  8.80523473,  2.31314151])
 
 Let us build a more compliated expression:
 
@@ -46,14 +46,14 @@ Every unique node in this expression can be found:
 
 >>> for node in set(expression.nodes()):
 ...     print(node)
-Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)))
-Constant(5)
-Multiply(Distribution("expon", scale=1), Constant(5))
-Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))), Multiply(Distribution("expon", scale=1), Constant(5)))
 Distribution("norm", loc=5, scale=1)
 Distribution("expon", scale=1)
 Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))
 Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))
+Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)))
+Constant(5)
+Multiply(Distribution("expon", scale=1), Constant(5))
+Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))), Multiply(Distribution("expon", scale=1), Constant(5)))
 
 Sampling the expression is simple enough:
 
@@ -82,7 +82,7 @@ Here is a more complex expression:
 >>> c = Distribution("norm", loc=0, scale=3)
 >>> expression = a*a - Add(a, b, c) + Abs(b)**Abs(c) + Exp(1 / Abs(c))
 >>> expression.sample(5, random_state=rng)
-array([-6.68289184,  3.41991338, 48.08480111, -4.23615474,  3.92863908])
+array([-3.75434563,  5.84160178, 50.58877597, -1.32687877, 81.00831756])
 
 
 Functions
@@ -266,9 +266,10 @@ class Node(abc.ABC):
             ancestors = G.subgraph(nx.ancestors(G, node))
             for ancestor in nx.topological_sort(ancestors):
                 assert isinstance(ancestor, (Constant, Distribution))
-                ancestor.samples_ = ancestor.rvs(size=size)
+                ancestor.samples_ = ancestor._sample(size=size)
 
             # Sample the node
+            assert isinstance(node, Distribution)
             node.samples_ = node._ppf(q=next(columns))
 
         # TODO: correlate the samples
@@ -281,7 +282,7 @@ class Node(abc.ABC):
             if hasattr(node, "samples_"):
                 continue
             elif isinstance(node, Constant):
-                node.samples_ = node.rvs(size=size)
+                node.samples_ = node._sample(size=size)
             elif isinstance(node, Distribution):
                 node.samples_ = node._ppf(q=next(columns))
             elif isinstance(node, Transform):
@@ -315,9 +316,15 @@ class Node(abc.ABC):
 
     def to_graph(self):
         """Convert the computational graph to a networkx MultiDiGraph."""
+        nodes = list(self.nodes())
+        if len(nodes) == 1:
+            G = nx.MultiDiGraph()
+            G.add_node(self)
+            return G
+
         edge_list = [
             (ancestor, node)
-            for node in self.nodes()
+            for node in nodes
             for ancestor in node.get_parents()
             if not node.is_leaf
         ]
@@ -377,13 +384,10 @@ class Constant(Node, OverloadMixin):
         self.value = value
         super().__init__()
 
-    def rvs(self, size=None, random_state=None):
+    def _sample(self, size=None, random_state=None):
         if size is None:
             return self.value
         return np.ones(size, dtype=type(self.value)) * self.value
-
-    def _sample(self, size=None, random_state=None):
-        return self.rvs(size=size, random_state=random_state)
 
     def get_parents(self):
         return []  # No parents
@@ -410,27 +414,6 @@ class Distribution(Node, OverloadMixin):
         if kwargs:
             out += f", {kwargs}"
         return out + ")"
-
-    def rvs(self, size=None, random_state=None):
-        # todo: assert that random state is not an integer
-        distribution = getattr(stats, self.distr)
-
-        args = tuple(
-            arg.rvs(size=size, random_state=random_state)
-            if isinstance(arg, Node)
-            else arg
-            for arg in self.args
-        )
-        kwargs = {
-            k: (
-                v.rvs(size=size, random_state=random_state)
-                if isinstance(v, Node)
-                else v
-            )
-            for (k, v) in self.kwargs.items()
-        }
-
-        return distribution(*args, **kwargs).rvs(size=size, random_state=random_state)
 
     def _ppf(self, q):
         # todo: assert that random state is not an integer
@@ -490,12 +473,6 @@ class VariadicTransform(Transform):
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
 
-    def rvs(self, size=None, random_state=None):
-        samples = (
-            parent.rvs(size=size, random_state=random_state) for parent in self.parents
-        )
-        return functools.reduce(self.op, samples)
-
     def _sample(self, size=None, random_state=None):
         samples = (parent.samples_ for parent in self.parents)
         return functools.reduce(self.op, samples)
@@ -516,12 +493,6 @@ class BinaryTransform(Transform):
     def __init__(self, *args):
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
-
-    def rvs(self, size=None, random_state=None):
-        samples = (
-            parent.rvs(size=size, random_state=random_state) for parent in self.parents
-        )
-        return self.op(*samples)
 
     def _sample(self, size=None, random_state=None):
         samples = (parent.samples_ for parent in self.parents)
@@ -547,9 +518,6 @@ class UnaryTransform(Transform):
     def __init__(self, arg):
         self.parent = python_to_prob(arg)
         super().__init__()
-
-    def rvs(self, size=None, random_state=None):
-        return self.op(self.parent.rvs(size=size, random_state=random_state))
 
     def _sample(self, size=None, random_state=None):
         return self.op(self.parent.samples_)
@@ -583,32 +551,6 @@ class ScalarFunctionTransform(Transform):
         self.args = args
         self.kwargs = kwargs
         super().__init__()
-
-    def rvs(self, size=None, random_state=None):
-        # Sample arguments
-        args = tuple(
-            (
-                arg.rvs(size=size, random_state=random_state)
-                if isinstance(arg, Node)
-                else itertools.repeat(arg)
-            )
-            for arg in self.args
-        )
-        kwargs = {
-            k: (
-                v.rvs(size=size, random_state=random_state)
-                if isinstance(v, Node)
-                else itertools.repeat(v)
-            )
-            for (k, v) in self.kwargs.items()
-        }
-
-        return np.array(
-            [
-                self.func(*args_i, **kwargs_i)
-                for (args_i, kwargs_i) in zip_args(args, kwargs)
-            ]
-        )
 
     def _sample(self, size=None, random_state=None):
         def unpack(arg):
