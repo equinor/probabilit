@@ -7,19 +7,6 @@ Modeling Monte Carlo analyses as computational graphs.
 Probabilit lets the user perform Monte-Carlo sampling using a high-level
 modeling language.
 
->>> (2 / Constant(3)).rvs(1)
-array([0.66666667])
->>> (Constant(2) / 3).rvs(1)
-array([0.66666667])
->>> (2 - Constant(3)).rvs(1)
-array([-1])
->>> (Constant(2) - 3).rvs(1)
-array([-1])
->>> (2**Constant(3)).rvs(1)
-array([8])
->>> (Constant(2) - 3).rvs(1)
-array([-1])
-
 As a first look at the modeling language, let us do some computations.
 We'll use constants before looking at random variables.
 
@@ -247,6 +234,7 @@ class Node(abc.ABC):
     def sample(self, size=None, random_state=None):
         """Assign samples to self.samples_ rescursively."""
         size = 1 if size is None else size
+        random_state = np.random.default_rng(random_state)
 
         # Draw a cube of random variables in [0, 1]
         cube = random_state.random((size, self.get_dimensionality()))
@@ -557,7 +545,7 @@ class Subtract(BinaryTransform):
 
 class UnaryTransform(Transform):
     def __init__(self, arg):
-        self.parent = arg
+        self.parent = python_to_prob(arg)
         super().__init__()
 
     def rvs(self, size=None, random_state=None):
@@ -583,7 +571,7 @@ class Log(UnaryTransform):
 
 
 class Exp(UnaryTransform):
-    op = np.log
+    op = np.exp
 
 
 class ScalarFunctionTransform(Transform):
@@ -623,13 +611,12 @@ class ScalarFunctionTransform(Transform):
         )
 
     def _sample(self, size=None, random_state=None):
-        
         def unpack(arg):
             return arg.samples_ if isinstance(arg, Node) else itertools.repeat(arg)
 
         # Sample arguments
         args = tuple(unpack(arg) for arg in self.args)
-        kwargs = {k: unpack(v)for (k, v) in self.kwargs.items()}
+        kwargs = {k: unpack(v) for (k, v) in self.kwargs.items()}
 
         return np.array(
             [
