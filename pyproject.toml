@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "probabilit"
 version = "0.0.1"
 description = "A Python package for Monte Carlo sampling."
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 readme = {file = "README.md", content-type = "text/markdown"}
 authors = [
     { name = "Tommy"},
