@@ -18,6 +18,7 @@ dependencies = [
 "numpy>=2",
 "scipy",
 "networkx",
+"cvxpy",
 ]  
 
 [project.optional-dependencies]
