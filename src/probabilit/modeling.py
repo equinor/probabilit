@@ -3,41 +3,50 @@ Modeling
 --------
 
 Probabilit lets the user perform Monte-Carlo sampling using a high-level
-modeling language.
+modeling language, which creates a computational graph.
 
-As a first look at the modeling language, let us do some computations.
-We'll use constants before looking at random variables.
-
-Random samples can be drawn from a node using .sample(), which delegates to scipy:
+For instance, to compute the shipping cost of a box where we are uncertain
+about the measurements:
 
 >>> rng = np.random.default_rng(42)
+>>> box_height = Distribution("norm", loc=0.5, scale=0.01)
+>>> box_width = Distribution("norm", loc=1, scale=0.01)
+>>> box_depth = Distribution("norm", loc=0.8, scale=0.01)
+>>> box_volume = box_height * box_width * box_depth
+>>> price_per_sqm = 50
+>>> price = box_volume * price_per_sqm
+>>> samples = price.sample(999, random_state=rng)
+>>> float(np.mean(samples))
+20.00139737515...
+
+Distributions are built on top of scipy, so "norm" refers to the name of the
+normal distribution as given in `scipy.stats`, and the arguments to the distribution
+must also match those given by `scipy.stats.norm`.
+
+Here is another example showing composite distributions, where the argument
+to one distribution is another distribution:
+
+>>> eggs_per_nest = Distribution("poisson", mu=3)
+>>> survivial_prob = Distribution("beta", a=10, b=15)
+>>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
+>>> survived.sample(9, random_state=rng)
+array([1., 1., 1., 0., 2., 1., 1., 0., 2.])
+
+To understand and examine the modeling language, we can do some computations
+with constants. The computational graph carries out arithmetic operations lazily
+once a model is sampled. Mixing numbers with nodes is allowed, but at least one
+expression or term must be a probabilit class instance:
+
 >>> a = Constant(1)
->>> a.sample(5, random_state=rng)
-array([1, 1, 1, 1, 1])
-
-Computational graphs can be built user overloaded Python operators.
-Mixing numbers with nodes is allowed, but at least one expression or term
-must be a probabilit class instance:
-
 >>> (a * 3 + 5).sample(5, random_state=rng)
 array([8, 8, 8, 8, 8])
 >>> Add(10, 5, 5).sample(5, random_state=rng)
 array([20, 20, 20, 20, 20])
 
-Of course, things get more interesting with probability distributions.
-The names and arguments correspond to scipy distributions (scipy.stats).
+Let us build a more compliated expression:
 
 >>> a = Distribution("norm", loc=5, scale=1)
 >>> b = Distribution("expon", scale=1)
->>> product = a * b
-
-The product above is not evaluated untill we sample from it.
-
->>> product.sample(5, random_state=rng)
-array([ 3.32357208,  7.25992397, 13.68470082,  8.80523473,  2.31314151])
-
-Let us build a more compliated expression:
-
 >>> expression = a**b + a * b + 5 * b
 
 Every unique node in this expression can be found:
@@ -56,38 +65,38 @@ Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=
 Sampling the expression is simple enough:
 
 >>> expression.sample(5, random_state=rng)
-array([81.47571166, 36.25874807,  4.04413643,  1.78245506, 16.86301139])
+array([ 2.70764145, 36.58578812,  7.07064239,  1.84433247,  3.90951632])
 
 Sampling the expression has the side effect that `.samples_` is populated on
 *every* node in the expression, for instance:
 
 >>> a.samples_
-array([4.6702595 , 5.36880945, 4.85768145, 5.1372535 , 5.9448457 ])
+array([4.51589278, 4.37788659, 5.25960812, 5.80609507, 4.33770499])
 
 To sample using e.g. Latin Hypercube, do the following:
 
 >>> from scipy.stats.qmc import LatinHypercube
->>> d = expression.get_dimensionality()
+>>> d = expression.get_number_of_distribution_nodes()
 >>> hypercube = LatinHypercube(d=d, rng=rng)
 >>> hypercube_samples = hypercube.random(5) # Draw 5 samples
 >>> expression.sample_from_cube(hypercube_samples)
 array([ 1.20438726, 12.40283222,  5.02130766, 16.45109076, 77.12874028])
 
-Here is a more complex expression:
+Here is an even more complex expression:
 
 >>> a = Distribution("norm", loc=0, scale=1)
 >>> b = Distribution("norm", loc=0, scale=2)
 >>> c = Distribution("norm", loc=0, scale=3)
 >>> expression = a*a - Add(a, b, c) + Abs(b)**Abs(c) + Exp(1 / Abs(c))
 >>> expression.sample(5, random_state=rng)
-array([-3.75434563,  5.84160178, 50.58877597, -1.32687877, 81.00831756])
-
+array([ 4.70542018, 14.43250192,  6.74494838, -0.14020459, -3.27334554])
 
 Functions
+---------
 
 If you have a function that is not an arithmetic expression, you can still
 Monte-Carlo simulate through it with the `scalar_transform` decorator, which
-will pass each sample through the computation node in a loop when we sample:
+will pass each sample through the computation node in a loop:
 
 >>> def function(a, b):
 ...     if a > 0:
@@ -100,19 +109,18 @@ Now we can create a computational graph:
 
 >>> a = Distribution("norm", loc=0, scale=1)
 >>> b = Distribution("norm", loc=0, scale=2)
->>> expression = function(a, b) # Function is not called here
+>>> expression = function(a, b) # Function is not actually called here
 
 Now sample 'through' the function:
 
 >>> expression.sample(5, random_state=rng)
-array([ 0.        ,  0.        , -0.13902087,  1.01335768,  0.        ])
+array([0.        , 0.        , 0.45555522, 0.        , 0.        ])
 """
 
 import operator
 import functools
 import numpy as np
 import numbers
-import dataclasses
 from scipy import stats
 import abc
 import itertools
@@ -204,11 +212,13 @@ def python_to_prob(argument):
 #     is determined by the graph structure.
 
 
-@dataclasses.dataclass
 class Node(abc.ABC):
     """A node in the computational graph."""
 
-    id_iter = itertools.count()  # Everyone gets a unique ID
+    id_iter = itertools.count()  # Every node gets a unique ID
+
+    def __init__(self):
+        self._id = next(self.id_iter)
 
     def __eq__(self, other):
         return self._id == other._id
@@ -216,43 +226,54 @@ class Node(abc.ABC):
     def __hash__(self):
         return self._id
 
-    def __post_init__(self):
-        self._id = next(self.id_iter)
-
     def nodes(self):
-        """Yields all ancestors using depth-first-search, including `self`."""
+        """Yields `self` and all ancestors using depth-first-search.
+
+        Examples
+        --------
+        >>> expression = Distribution("norm") -  2**Constant(2)
+        >>> for node in expression.nodes():
+        ...     print(node)
+        Subtract(Distribution("norm"), Power(Constant(2), Constant(2)))
+        Power(Constant(2), Constant(2))
+        Constant(2)
+        Constant(2)
+        Distribution("norm")
+        """
         queue = [(self)]
         while queue:
             yield (node := queue.pop())
             queue.extend(node.get_parents())
 
-    def get_dimensionality(self):
+    def get_number_of_distribution_nodes(self):
         return sum(1 for node in set(self.nodes()) if isinstance(node, Distribution))
 
     def sample(self, size=None, random_state=None):
-        """Assign samples to self.samples_ rescursively."""
+        """Sample the current node and assign to all node.samples_."""
         size = 1 if size is None else size
         random_state = np.random.default_rng(random_state)
 
         # Draw a cube of random variables in [0, 1]
-        cube = random_state.random((size, self.get_dimensionality()))
+        cube = random_state.random((size, self.get_number_of_distribution_nodes()))
 
         return self.sample_from_cube(cube)
 
     def sample_from_cube(self, cube):
-        """Use samples from a cube of shape (dimensionality, num_samples)."""
+        """Use samples from a cube of quantiles in [0, 1] to sample all
+        distributions. The cube must have shape (dimensionality, num_samples)."""
         assert nx.is_directed_acyclic_graph(self.to_graph())
-
         size, n_dim = cube.shape
-        assert n_dim == self.get_dimensionality()
+        assert n_dim == self.get_number_of_distribution_nodes()
+
+        # Prepare columns of quantiles, one column for each Distribution
         columns = iter(list(cube.T))
 
-        # Clear any samples that might exist
+        # Clear any samples that might exist in the graph
         for node in set(self.nodes()):
             if hasattr(node, "samples_"):
                 delattr(node, "samples_")
 
-        # Sample leaf nodes that are distributions first
+        # Start with initial sampling nodes, which contain independent variables
         initial_sampling_nodes = [
             node for node in set(self.nodes()) if node._is_initial_sampling_node()
         ]
@@ -272,11 +293,8 @@ class Node(abc.ABC):
 
         # TODO: correlate the samples
 
-        # Iterate over the remaining nodes and sample
-        remaining_nodes = nx.topological_sort(G)
-
         # Iterate from leaf nodes and up to parent
-        for node in remaining_nodes:
+        for node in nx.topological_sort(G):
             if hasattr(node, "samples_"):
                 continue
             elif isinstance(node, Constant):
@@ -285,6 +303,8 @@ class Node(abc.ABC):
                 node.samples_ = node._sample(q=next(columns))
             elif isinstance(node, Transform):
                 node.samples_ = node._sample()
+            else:
+                raise TypeError("Node must be Constant, Distribution or Transform.")
 
         return self.samples_
 
@@ -333,7 +353,7 @@ class Node(abc.ABC):
 
 
 class OverloadMixin:
-    """Overloads dunder (double underscore) methods."""
+    """Overloads dunder (double underscore) methods for easier modeling."""
 
     def __add__(self, other):
         return Add(self, other)
@@ -375,7 +395,7 @@ class OverloadMixin:
 class Constant(Node, OverloadMixin):
     """A constant is a number."""
 
-    is_leaf = True
+    is_leaf = True  # A Constant is always a leaf node
 
     def __init__(self, value):
         self.value = value
@@ -387,7 +407,7 @@ class Constant(Node, OverloadMixin):
         return np.ones(size, dtype=type(self.value)) * self.value
 
     def get_parents(self):
-        return []
+        return []  # A Constant does not have any parents
 
     def __repr__(self):
         return f"{type(self).__name__}({self.value})"
@@ -414,16 +434,19 @@ class Distribution(Node, OverloadMixin):
 
     def _sample(self, q):
         def unpack(arg):
+            """Unpack distribution arguments (parents) to arrays if Node."""
             return arg.samples_ if isinstance(arg, Node) else arg
 
+        # Parse the arguments and keyword arguments for the distribution
         args = tuple(unpack(arg) for arg in self.args)
         kwargs = {k: unpack(v) for (k, v) in self.kwargs.items()}
 
+        # Sample from the distribution with inverse CDF
         distribution = getattr(stats, self.distr)
         return distribution(*args, **kwargs).ppf(q)
 
     def get_parents(self):
-        # A distribution only has parents if its parameters are Nodes
+        # A distribution only has parents if it has parameters that are Nodes
         for arg in self.args + tuple(self.kwargs.values()):
             if isinstance(arg, Node):
                 yield arg
@@ -447,6 +470,12 @@ class Transform(Node, abc.ABC, OverloadMixin):
 
 
 class VariadicTransform(Transform):
+    """Parent class for variadic transforms (must be associative), e.g.
+    Add(arg1, arg2, arg3, arg4, ...)
+    Multiply(arg1, arg2, arg3, arg4, ...)
+
+    """
+
     def __init__(self, *args):
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
@@ -468,6 +497,8 @@ class Multiply(VariadicTransform):
 
 
 class BinaryTransform(Transform):
+    """Class for binary transforms, such as Divide, Power, Subtract, etc."""
+
     def __init__(self, *args):
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
@@ -493,6 +524,9 @@ class Subtract(BinaryTransform):
 
 
 class UnaryTransform(Transform):
+    """Class for unary tranforms, i.e. functions that take one argument, such
+    as Abs(), Exp(), Log()."""
+
     def __init__(self, arg):
         self.parent = python_to_prob(arg)
         super().__init__()

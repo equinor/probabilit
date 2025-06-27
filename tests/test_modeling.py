@@ -53,6 +53,12 @@ def test_constant_expressions():
     np.testing.assert_allclose(result.sample(), 1 / 5 - (np.log(5) + 10))
 
 
+def test_single_expression():
+    # A graph with a single node is an edge-case
+    samples = Constant(2).sample()
+    np.testing.assert_allclose(samples, 2)
+
+
 if __name__ == "__main__":
     import pytest
 
