@@ -125,6 +125,7 @@ from scipy import stats
 import abc
 import itertools
 import networkx as nx
+from scipy._lib._util import check_random_state
 
 
 # =============================================================================
@@ -251,7 +252,7 @@ class Node(abc.ABC):
     def sample(self, size=None, random_state=None):
         """Sample the current node and assign to all node.samples_."""
         size = 1 if size is None else size
-        random_state = np.random.default_rng(random_state)
+        random_state = check_random_state(random_state)
 
         # Draw a cube of random variables in [0, 1]
         cube = random_state.random((size, self.get_number_of_distribution_nodes()))
@@ -401,7 +402,7 @@ class Constant(Node, OverloadMixin):
         self.value = value
         super().__init__()
 
-    def _sample(self, size=None, random_state=None):
+    def _sample(self, size=None):
         if size is None:
             return self.value
         return np.ones(size, dtype=type(self.value)) * self.value
@@ -480,7 +481,7 @@ class VariadicTransform(Transform):
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
 
-    def _sample(self, size=None, random_state=None):
+    def _sample(self, size=None):
         samples = (parent.samples_ for parent in self.parents)
         return functools.reduce(self.op, samples)
 
@@ -503,7 +504,7 @@ class BinaryTransform(Transform):
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
 
-    def _sample(self, size=None, random_state=None):
+    def _sample(self, size=None):
         samples = (parent.samples_ for parent in self.parents)
         return self.op(*samples)
 
@@ -531,7 +532,7 @@ class UnaryTransform(Transform):
         self.parent = python_to_prob(arg)
         super().__init__()
 
-    def _sample(self, size=None, random_state=None):
+    def _sample(self, size=None):
         return self.op(self.parent.samples_)
 
     def get_parents(self):
@@ -564,7 +565,7 @@ class ScalarFunctionTransform(Transform):
         self.kwargs = kwargs
         super().__init__()
 
-    def _sample(self, size=None, random_state=None):
+    def _sample(self, size=None):
         def unpack(arg):
             return arg.samples_ if isinstance(arg, Node) else itertools.repeat(arg)
 
