@@ -179,7 +179,7 @@ def python_to_prob(argument):
 #
 #  mu = Distribution("norm", loc=0, scale=1)
 #  normal  = Distribution("norm", loc=mu, scale=1)
-#  result = b + normal - 2
+#  result = mu + normal - 2
 #
 # Is represented by a graph such as:
 #
