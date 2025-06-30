@@ -59,6 +59,11 @@ def test_single_expression():
     np.testing.assert_allclose(samples, 2)
 
 
+def test_constant_idempotent():
+    for a in [-1, 0.0, 1.3, 3]:
+        assert Constant(Constant(a)).value == Constant(a).value
+
+
 if __name__ == "__main__":
     import pytest
 
