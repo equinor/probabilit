@@ -267,7 +267,6 @@ class Node(abc.ABC):
                 copied.kwargs = {k: update(v) for (k, v) in copied.kwargs.items()}
             elif isinstance(copied, (VariadicTransform, BinaryTransform)):
                 copied.parents = tuple(update(p) for p in copied.parents)
-
             elif isinstance(copied, UnaryTransform):
                 copied.parent = update(copied.parent)
             elif isinstance(copied, Constant):

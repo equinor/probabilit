@@ -19,6 +19,10 @@ def test_copying():
     # The same holds for parents - they are copied
     assert a2.kwargs["loc"] is not a.kwargs["loc"]
 
+    a.sample()
+    assert hasattr(a, "samples_")
+    assert not hasattr(a2, "samples_")
+
 
 def test_constant_arithmetic():
     # Test that converstion with int works
