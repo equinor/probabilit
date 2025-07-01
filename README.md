@@ -52,6 +52,7 @@ Now we can induce correlations:
 >>> X_transformed = transform(X)
 >>> format(sp.stats.pearsonr(*X_transformed.T).statistic, ".8f")
 '0.27965287'
+
 ```
 
 ## Modeling
