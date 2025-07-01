@@ -7,6 +7,7 @@ A Python package for Monte Carlo sampling.
 The low-level API contains Numpy functions for working with random variables.
 The two most important ones are (1) the `nearest_correlation_matrix` function and and (2) the `ImanConover` class.
 
+**Fixing user-supplied correlation matrices.**
 The function `nearest_correlation_matrix` can be used to fix user-specified correlation matrices, which are often not valid.
 Below a user has specified some correlations, but the resulting correlation matrix has a negative eigenvalue and is not positive definite.
 
@@ -27,6 +28,7 @@ array([2.07852823e+00, 9.21470108e-01, 1.66710188e-06])
 
 ```
 
+**Inducing correlations on samples.**
 The class `ImanConover` can be used to induce correlations on uncorrelated variables.
 There's not guarantee that we're able to achieve the desired correlation structure, but in practice we can often get close.
 
