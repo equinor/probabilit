@@ -1,5 +1,32 @@
-from probabilit.modeling import Constant, Log, Exp
+from probabilit.modeling import Constant, Log, Exp, Distribution
 import numpy as np
+
+
+def test_copying():
+    # Create a graph
+    mu = Distribution("norm", loc=0, scale=1)
+    a = Distribution("norm", loc=mu, scale=Constant(0.5))
+
+    # Create a copy
+    a2 = a.copy()
+
+    # The copy is not the same object
+    assert a2 is not a
+
+    # However, the IDs match and they are equal
+    assert a2 == a and (a2._id == a._id)
+
+    # The same holds for parents - they are copied
+    assert a2.kwargs["loc"] is not a.kwargs["loc"]
+
+    a.sample()
+    assert hasattr(a, "samples_")
+    assert not hasattr(a2, "samples_")
+
+    # Now create a copy and ensure samples are copied too
+    a3 = a.copy()
+    assert hasattr(a3, "samples_")
+    assert a3.samples_ is not a.samples_
 
 
 def test_constant_arithmetic():

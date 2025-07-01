@@ -126,6 +126,9 @@ import abc
 import itertools
 import networkx as nx
 from scipy._lib._util import check_random_state
+from probabilit.iman_conover import ImanConover
+from probabilit.correlation import nearest_correlation_matrix
+import copy
 
 
 # =============================================================================
@@ -151,6 +154,31 @@ def zip_args(args, kwargs):
 
     for args_i, kwargs_i in zip(zipped_args, zipped_kwargs):
         yield args_i, dict(zip(kwargs.keys(), kwargs_i))
+
+
+def build_corrmat(correlations):
+    """Given a list of [(indices1, corrmat1), (indices2, corrmat2), ...],
+    create a big correlation matrix.
+
+    Examples
+    --------
+    >>> correlations = [((0, 2), np.array([[1, 0.5], [0.5, 1]]))]
+    >>> build_corrmat(correlations)
+    array([[1. , 0. , 0.5],
+           [0. , 1. , 0. ],
+           [0.5, 0. , 1. ]])
+    """
+    # TODO: If no correlation is given, we implicitly assume zero.
+    # For instance, if no correlation between indices (0, 3) is given
+    # in the input data, then C[0, 3] = C[3, 0] = 0.0, which is strictly
+    # speaking not the same (no preference vs. preference for 0 corr)
+    n = max(max(idx) for (idx, _) in correlations)
+    C = np.eye(n + 1, dtype=float)
+
+    for idx_i, corrmat_i in correlations:
+        C[np.ix_(idx_i, idx_i)] = corrmat_i
+
+    return C
 
 
 def python_to_prob(argument):
@@ -220,12 +248,66 @@ class Node(abc.ABC):
 
     def __init__(self):
         self._id = next(self.id_iter)
+        self._correlations = []
 
     def __eq__(self, other):
         return self._id == other._id
 
     def __hash__(self):
         return self._id
+
+    def copy(self):
+        """Copy the Node, including the entire graph above it.
+
+        Examples
+        --------
+        >>> mu = Distribution("norm", loc=0, scale=1)
+        >>> a = Distribution("norm", loc=mu, scale=Constant(0.5))
+        >>> a2 = a.copy()
+        >>> a is a2
+        False
+        >>> a2.kwargs["loc"] == a.kwargs["loc"]
+        True
+        >>> a2.kwargs["loc"] is a.kwargs["loc"]
+        False
+        """
+        # Map from ID to new object copy
+        id_to_new = dict()
+
+        def update(item):
+            """Given an item, use the ID to map to new object copy."""
+            if isinstance(item, Node):
+                return id_to_new[item._id]
+            return copy.deepcopy(item)
+
+        # Go through nodes in topologial order, guaranteeing that parents
+        # have always been copied over to new graph when children are copied.
+        for node in nx.topological_sort(self.to_graph()):
+            # Copy the node itself and update the mapping
+            copied = copy.copy(node)  # Copy a node WITHOUT copying the graph
+            id_to_new[copied._id] = copied
+
+            # Copy samples if they exist
+            if hasattr(copied, "samples_"):
+                copied.samples_ = np.copy(copied.samples_)
+
+            copied._correlations = copy.deepcopy(copied._correlations)
+
+            # Now that the node has been updated, update references to parents
+            # to point to Nodes in the new copied graph instead of the old one.
+            if isinstance(copied, (Distribution, ScalarFunctionTransform)):
+                copied.args = tuple(update(arg) for arg in copied.args)
+                copied.kwargs = {k: update(v) for (k, v) in copied.kwargs.items()}
+            elif isinstance(copied, (VariadicTransform, BinaryTransform)):
+                copied.parents = tuple(update(p) for p in copied.parents)
+            elif isinstance(copied, UnaryTransform):
+                copied.parent = update(copied.parent)
+            elif isinstance(copied, Constant):
+                copied.value = update(copied.value)
+            else:
+                pass
+
+        return id_to_new[self._id]
 
     def nodes(self):
         """Yields `self` and all ancestors using depth-first-search.
@@ -275,9 +357,9 @@ class Node(abc.ABC):
                 delattr(node, "samples_")
 
         # Start with initial sampling nodes, which contain independent variables
-        initial_sampling_nodes = [
-            node for node in set(self.nodes()) if node._is_initial_sampling_node()
-        ]
+        initial_sampling_nodes = set(
+            node for node in self.nodes() if node._is_initial_sampling_node()
+        )
 
         # Loop over all initial sampling nodes
         G = self.to_graph()
@@ -292,7 +374,46 @@ class Node(abc.ABC):
             assert isinstance(node, Distribution)
             node.samples_ = node._sample(q=next(columns))
 
-        # TODO: correlate the samples
+        # Go through all ancestor nodes and create a list [(var, corr), ...]
+        correlations = []
+        for node in set(self.nodes()):
+            if hasattr(node, "_correlations"):
+                correlations.extend(node._correlations)
+
+        # Check that each variable to correlate is an initial sampling node
+        for variables, _ in correlations:
+            for variable in variables:
+                if variable not in initial_sampling_nodes:
+                    raise ValueError("Cannot correlate variable: {variable}")
+
+        # Check that no correlation has been specified twice
+        variable_sets = [set(variables) for (variables, _) in correlations]
+        for vars1, vars2 in itertools.combinations(variable_sets, 2):
+            common = vars1.intersection(vars2)
+            if len(common) > 1:
+                raise ValueError("Correlations specified more than once: {common}")
+
+        # Map all variables to integers
+        all_variables = list(functools.reduce(set.union, variable_sets, set()))
+        var_to_int = {v: i for (i, v) in enumerate(all_variables)}
+        correlations = [
+            (tuple(var_to_int[var] for var in variables), corrmat)
+            for (variables, corrmat) in correlations
+        ]
+
+        # If there are any correlations to induce, do so
+        if correlations:
+            # Induce correlations
+            correlation_matrix = build_corrmat(correlations)
+            correlation_matrix = nearest_correlation_matrix(correlation_matrix)
+
+            iman_conover = ImanConover(correlation_matrix)
+
+            # Concatenate samples, correlate them (shift rows in each col), then re-assign
+            samples_input = np.vstack([var.samples_ for var in all_variables]).T
+            samples_ouput = iman_conover(samples_input)
+            for var, sample in zip(all_variables, samples_ouput.T):
+                var.samples_ = np.copy(sample)
 
         # Iterate from leaf nodes and up to parent
         for node in nx.topological_sort(G):
@@ -318,19 +439,36 @@ class Node(abc.ABC):
         ancestors_distr = any(isinstance(node, Distribution) for node in ancestors)
         return is_distribution and not ancestors_distr
 
-    def correlate(self, corr_mat, variables):
-        """Impose correlations on variables."""
+    def correlate(self, *variables, corr_mat):
+        """Impose correlations on variables.
+
+        When `.correlate(*variables)` is called on a node, the variables must
+        be ancestors of that node. The order of the variables should match the
+        order of the rows/columns in the correlation matrix.s
+
+        Examples
+        --------
+        >>> a = Distribution("expon", 1)
+        >>> b = Distribution("poisson", 1)
+        >>> corr_mat = np.array([[1, 0.5], [0.5, 1]])
+
+        Correlations can be induced on any child node.
+
+        >>> import scipy as sp
+        >>> result = (a + b)
+        >>> result = result.correlate(a, b, corr_mat=corr_mat)
+        >>> _ = result.sample(999, random_state=0)
+        >>> float(sp.stats.pearsonr(a.samples_, b.samples_).statistic)
+        0.433649...
+
+        """
         assert corr_mat.ndim == 2
         assert corr_mat.shape[0] == corr_mat.shape[1]
         assert corr_mat.shape[0] == len(variables)
         assert len(variables) == len(set(variables))
         nodes = set(self.nodes())
         assert all(var in nodes for var in variables)
-        assert not any(hasattr(node, "corr_mat_") for node in nodes)
-
-        self.corr_mat_ = np.copy(corr_mat)
-        self.corr_variables_ = list(variables)
-
+        self._correlations.append((list(variables), np.copy(corr_mat)))
         return self
 
     def to_graph(self):
@@ -483,7 +621,7 @@ class VariadicTransform(Transform):
 
     def _sample(self, size=None):
         samples = (parent.samples_ for parent in self.parents)
-        return functools.reduce(self.op, samples)
+        return functools.reduce(self.op, samples, self.initial)
 
     def get_parents(self):
         yield from self.parents
@@ -491,10 +629,12 @@ class VariadicTransform(Transform):
 
 class Add(VariadicTransform):
     op = operator.add
+    initial = 0
 
 
 class Multiply(VariadicTransform):
     op = operator.mul
+    initial = 1
 
 
 class BinaryTransform(Transform):
@@ -606,12 +746,16 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
-    mu = Constant(1)
-    a = Distribution("norm", loc=mu, scale=1)
-    b = Distribution("norm", loc=0, scale=2)
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
 
     expression = a + b
-    expression.correlate(np.eye(2), [a, b])
+    corr_mat = np.array([[1.0, 0.8], [0.8, 1.0]])
+    expression.correlate(a, b, corr_mat=corr_mat)
+
+    expression = expression + c
+    expression.correlate(b, c, corr_mat=corr_mat)
 
     import matplotlib.pyplot as plt
 
@@ -620,12 +764,3 @@ if __name__ == "__main__":
     plt.figure(figsize=(3, 2))
     plt.scatter(a.samples_, b.samples_, s=2)
     plt.show()
-
-    print("----")
-
-    a = Distribution("norm", loc=5, scale=1)
-    b = Distribution("expon", scale=1)
-
-    expression = a**b + a * b + 5 * b
-
-    expression.sample(5, random_state=rng)
