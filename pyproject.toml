@@ -18,6 +18,8 @@ dependencies = [
 "numpy>=2",
 "scipy",
 "networkx",
+"seaborn",
+"pandas",
 "cvxpy",
 ]  
 
