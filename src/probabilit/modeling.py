@@ -385,18 +385,36 @@ class Node(abc.ABC):
         ancestors_distr = any(isinstance(node, Distribution) for node in ancestors)
         return is_distribution and not ancestors_distr
 
-    def correlate(self, corr_mat, variables):
-        """Impose correlations on variables."""
+    def correlate(self, *variables, corr_mat):
+        """Impose correlations on variables.
+
+        When `.correlate(*variables)` is called on a node, the variables must
+        be ancestors of that node. The order of the variables should match the
+        order of the rows/columns in the correlation matrix.s
+
+        Examples
+        --------
+        >>> a = Distribution("expon", 1)
+        >>> b = Distribution("poisson", 1)
+        >>> corr_mat = np.array([[1, 0.5], [0.5, 1]])
+
+        Correlations can be induced on any child node.
+
+        >>> import scipy as sp
+        >>> result = (a + b)
+        >>> result = result.correlate(a, b, corr_mat=corr_mat)
+        >>> _ = result.sample(999, random_state=0)
+        >>> float(sp.stats.pearsonr(a.samples_, b.samples_).statistic)
+        0.433649...
+
+        """
         assert corr_mat.ndim == 2
         assert corr_mat.shape[0] == corr_mat.shape[1]
         assert corr_mat.shape[0] == len(variables)
         assert len(variables) == len(set(variables))
         nodes = set(self.nodes())
         assert all(var in nodes for var in variables)
-        assert not any(hasattr(node, "corr_mat_") for node in nodes)
-
         self._correlations.append((list(variables), np.copy(corr_mat)))
-
         return self
 
     def to_graph(self):
@@ -679,11 +697,11 @@ if __name__ == "__main__":
     c = Distribution("norm", loc=0, scale=1)
 
     expression = a + b
-    corrmat = np.array([[1.0, 0.8], [0.8, 1.0]])
-    expression.correlate(corrmat, [a, b])
+    corr_mat = np.array([[1.0, 0.8], [0.8, 1.0]])
+    expression.correlate(a, b, corr_mat=corr_mat)
 
     expression = expression + c
-    expression.correlate(corrmat, [b, c])
+    expression.correlate(b, c, corr_mat=corr_mat)
 
     import matplotlib.pyplot as plt
 
