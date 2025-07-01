@@ -126,6 +126,8 @@ import abc
 import itertools
 import networkx as nx
 from scipy._lib._util import check_random_state
+from probabilit.iman_conover import ImanConover
+from probabilit.correlation import nearest_correlation_matrix
 
 
 # =============================================================================
@@ -151,6 +153,31 @@ def zip_args(args, kwargs):
 
     for args_i, kwargs_i in zip(zipped_args, zipped_kwargs):
         yield args_i, dict(zip(kwargs.keys(), kwargs_i))
+
+
+def build_corrmat(correlations):
+    """Given a list of [(indices1, corrmat1), (indices2, corrmat2), ...],
+    create a big correlation matrix.
+
+    Examples
+    --------
+    >>> correlations = [((0, 2), np.array([[1, 0.5], [0.5, 1]]))]
+    >>> build_corrmat(correlations)
+    array([[1. , 0. , 0.5],
+           [0. , 1. , 0. ],
+           [0.5, 0. , 1. ]])
+    """
+    # TODO: If no correlation is given, we implicitly assume zero.
+    # For instance, if no correlation between indices (0, 3) is given
+    # in the input data, then C[0, 3] = C[3, 0] = 0.0, which is strictly
+    # speaking not the same (no preference vs. preference for 0 corr)
+    n = max(max(idx) for (idx, _) in correlations)
+    C = np.eye(n + 1, dtype=float)
+
+    for idx_i, corrmat_i in correlations:
+        C[np.ix_(idx_i, idx_i)] = corrmat_i
+
+    return C
 
 
 def python_to_prob(argument):
@@ -220,6 +247,7 @@ class Node(abc.ABC):
 
     def __init__(self):
         self._id = next(self.id_iter)
+        self._correlations = []
 
     def __eq__(self, other):
         return self._id == other._id
@@ -275,9 +303,9 @@ class Node(abc.ABC):
                 delattr(node, "samples_")
 
         # Start with initial sampling nodes, which contain independent variables
-        initial_sampling_nodes = [
-            node for node in set(self.nodes()) if node._is_initial_sampling_node()
-        ]
+        initial_sampling_nodes = set(
+            node for node in self.nodes() if node._is_initial_sampling_node()
+        )
 
         # Loop over all initial sampling nodes
         G = self.to_graph()
@@ -292,7 +320,46 @@ class Node(abc.ABC):
             assert isinstance(node, Distribution)
             node.samples_ = node._sample(q=next(columns))
 
-        # TODO: correlate the samples
+        # Go through all ancestor nodes and create a list [(var, corr), ...]
+        correlations = []
+        for node in set(self.nodes()):
+            if hasattr(node, "_correlations"):
+                correlations.extend(node._correlations)
+
+        # Check that each variable to correlate is an initial sampling node
+        for variables, _ in correlations:
+            for variable in variables:
+                if variable not in initial_sampling_nodes:
+                    raise ValueError("Cannot correlate variable: {variable}")
+
+        # Check that no correlation has been specified twice
+        variable_sets = [set(variables) for (variables, _) in correlations]
+        for vars1, vars2 in itertools.combinations(variable_sets, 2):
+            common = vars1.intersection(vars2)
+            if len(common) > 1:
+                raise ValueError("Correlations specified more than once: {common}")
+
+        # Map all variables to integers
+        all_variables = list(functools.reduce(set.union, variable_sets, set()))
+        var_to_int = {v: i for (i, v) in enumerate(all_variables)}
+        correlations = [
+            (tuple(var_to_int[var] for var in variables), corrmat)
+            for (variables, corrmat) in correlations
+        ]
+
+        # If there are any correlations to induce, do so
+        if correlations:
+            # Induce correlations
+            correlation_matrix = build_corrmat(correlations)
+            correlation_matrix = nearest_correlation_matrix(correlation_matrix)
+
+            iman_conover = ImanConover(correlation_matrix)
+
+            # Concatenate samples, correlate them (shift rows in each col), then re-assign
+            samples_input = np.vstack([var.samples_ for var in all_variables]).T
+            samples_ouput = iman_conover(samples_input)
+            for var, sample in zip(all_variables, samples_ouput.T):
+                var.samples_ = np.copy(sample)
 
         # Iterate from leaf nodes and up to parent
         for node in nx.topological_sort(G):
@@ -328,8 +395,7 @@ class Node(abc.ABC):
         assert all(var in nodes for var in variables)
         assert not any(hasattr(node, "corr_mat_") for node in nodes)
 
-        self.corr_mat_ = np.copy(corr_mat)
-        self.corr_variables_ = list(variables)
+        self._correlations.append((list(variables), np.copy(corr_mat)))
 
         return self
 
@@ -483,7 +549,7 @@ class VariadicTransform(Transform):
 
     def _sample(self, size=None):
         samples = (parent.samples_ for parent in self.parents)
-        return functools.reduce(self.op, samples)
+        return functools.reduce(self.op, samples, self.initial)
 
     def get_parents(self):
         yield from self.parents
@@ -491,10 +557,12 @@ class VariadicTransform(Transform):
 
 class Add(VariadicTransform):
     op = operator.add
+    initial = 0
 
 
 class Multiply(VariadicTransform):
     op = operator.mul
+    initial = 1
 
 
 class BinaryTransform(Transform):
@@ -606,12 +674,16 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
-    mu = Constant(1)
-    a = Distribution("norm", loc=mu, scale=1)
-    b = Distribution("norm", loc=0, scale=2)
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
 
     expression = a + b
-    expression.correlate(np.eye(2), [a, b])
+    corrmat = np.array([[1.0, 0.8], [0.8, 1.0]])
+    expression.correlate(corrmat, [a, b])
+
+    expression = expression + c
+    expression.correlate(corrmat, [b, c])
 
     import matplotlib.pyplot as plt
 
@@ -620,12 +692,3 @@ if __name__ == "__main__":
     plt.figure(figsize=(3, 2))
     plt.scatter(a.samples_, b.samples_, s=2)
     plt.show()
-
-    print("----")
-
-    a = Distribution("norm", loc=5, scale=1)
-    b = Distribution("expon", scale=1)
-
-    expression = a**b + a * b + 5 * b
-
-    expression.sample(5, random_state=rng)
