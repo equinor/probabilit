@@ -20,6 +20,7 @@ dependencies = [
 "networkx",
 "seaborn",
 "pandas",
+"cvxpy",
 ]  
 
 [project.optional-dependencies]

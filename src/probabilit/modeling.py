@@ -448,7 +448,7 @@ class Constant(Node, OverloadMixin):
     is_leaf = True  # A Constant is always a leaf node
 
     def __init__(self, value):
-        self.value = value
+        self.value = value.value if isinstance(value, Constant) else value
         super().__init__()
 
     def _sample(self, size=None):
