@@ -23,6 +23,11 @@ def test_copying():
     assert hasattr(a, "samples_")
     assert not hasattr(a2, "samples_")
 
+    # Now create a copy and ensure samples are copied too
+    a3 = a.copy()
+    assert hasattr(a3, "samples_")
+    assert a3.samples_ is not a.samples_
+
 
 def test_constant_arithmetic():
     # Test that converstion with int works
