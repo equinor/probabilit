@@ -1,5 +1,72 @@
-from probabilit.modeling import Constant, Log, Exp, Distribution
+from probabilit.modeling import (
+    Constant,
+    Log,
+    Exp,
+    Distribution,
+    Floor,
+    Equal,
+    All,
+    Min,
+    Max,
+)
 import numpy as np
+
+
+class TestModelingExamples:
+    def test_die_problem(self):
+        """If we throw 2 die, what is the probability that each one ends up
+        with the same number?"""
+
+        die1 = Floor(1 + Distribution("uniform") * 6)
+        die2 = Floor(1 + Distribution("uniform") * 6)
+        equal = Equal(die1, die2)
+
+        samples = equal.sample(999, random_state=42)
+
+        np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.001)
+
+    def test_estimating_pi(self):
+        """Consider the unit square [0, 1]^2. The area of the square is 1.
+        The area of a quarter circle is pi * r^2 / 4 = pi / 4.
+        So the fraction (quarter circle area) / (total area) = pi / 4.
+
+        Use this to estimate pi.
+        """
+
+        x = Distribution("uniform")
+        y = Distribution("uniform")
+        inside = x**2 + y**2 < 1
+        pi_estimate = 4 * inside
+
+        samples = pi_estimate.sample(9999, random_state=42)
+        np.testing.assert_allclose(samples.mean(), np.pi, atol=0.01)
+
+    def test_broken_stick_problem(self):
+        """Consider a stick of length 1. Pick two points uniformly at random on
+        the stick, and break the stick at those points. What is the probability
+        that the three segments obtained in this way form a triangle?
+
+        Of course this is the probability that no one of the short sticks is
+        longer than 1/2. This probability turns out to be 1/4.
+
+        https://sites.math.duke.edu/education/webfeatsII/gdrive/Team%20D/project/brokenstick.htm
+        https://mathoverflow.net/questions/2014/if-you-break-a-stick-at-two-points-chosen-uniformly-the-probability-the-three-r
+        """
+
+        # Cuts along the stick
+        cut1 = Distribution("uniform", loc=0, scale=1)
+        cut2 = Distribution("uniform", loc=0, scale=1)
+
+        # The lengths
+        length1 = Min(cut1, cut2)
+        length2 = Max(cut1, cut2) - Min(cut1, cut2)
+        length3 = 1 - Max(cut1, cut2)
+
+        # No one of the short sticks is longer than 1/2 <=> all are shorter
+        prob = All(length1 < 1 / 2, length2 < 1 / 2, length3 < 1 / 2)
+
+        samples = prob.sample(9999, random_state=42)
+        np.testing.assert_allclose(samples.mean(), 1 / 4, atol=0.01)
 
 
 def test_copying():
