@@ -660,6 +660,14 @@ class Min(VariadicTransform):
     op = np.minimum
 
 
+class All(VariadicTransform):
+    op = np.logical_and
+
+
+class Any(VariadicTransform):
+    op = np.logical_or
+
+
 class Avg(VariadicTransform):
     def _sample(self, size=None):
         samples = tuple(parent.samples_ for parent in self.parents)
