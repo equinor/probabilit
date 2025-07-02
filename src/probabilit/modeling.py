@@ -533,6 +533,20 @@ class OverloadMixin:
     def __lt__(self, other):
         return LessThan(self, other)
 
+    def __le__(self, other):
+        return LessThanOrEqual(self, other)
+
+    def __gt__(self, other):
+        return GreaterThan(self, other)
+
+    def __ge__(self, other):
+        return GreaterThanOrEqual(self, other)
+
+    # TODO: __eq__ (==) and __ne__ (!=) are not implemented here (yet),
+    # because they are also used in set(nodes), which relies upon
+    # both equality checks and __hash__. We should probably remove all usage
+    # of set() within methods like  sample(), to free up == and != for modeling.
+
 
 class Constant(Node, OverloadMixin):
     """A constant is a number."""
