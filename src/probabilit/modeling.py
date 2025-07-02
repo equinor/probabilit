@@ -585,6 +585,8 @@ class Distribution(Node, OverloadMixin):
         try:
             return distribution(*args, **kwargs).ppf(q)
         except AttributeError:
+            # Multivariate distributions do not have .ppf()
+            # isinstance(distribution, (multi_rv_generic, multi_rv_frozen))
             return distribution(*args, **kwargs).rvs(size=len(q))
 
     def get_parents(self):
