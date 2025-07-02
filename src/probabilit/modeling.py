@@ -714,11 +714,11 @@ class LessThanOrEqual(BinaryTransform):
 
 
 class GreaterThan(BinaryTransform):
-    op = operator.gt  # <
+    op = operator.gt  # >
 
 
 class GreaterThanOrEqual(BinaryTransform):
-    op = operator.ge  # <=
+    op = operator.ge  # >=
 
 
 class UnaryTransform(Transform):
