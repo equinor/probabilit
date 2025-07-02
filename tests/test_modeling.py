@@ -1,5 +1,35 @@
-from probabilit.modeling import Constant, Log, Exp, Distribution
+from probabilit.modeling import Constant, Log, Exp, Distribution, Floor, Equal
 import numpy as np
+
+
+class TestModelingExamples:
+    def test_die_problem(self):
+        """If we throw 2 die, what is the probability that each one ends up
+        with the same number?"""
+
+        die1 = Floor(1 + Distribution("uniform") * 6)
+        die2 = Floor(1 + Distribution("uniform") * 6)
+        equal = Equal(die1, die2)
+
+        samples = equal.sample(999, random_state=42)
+
+        np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.001)
+
+    def test_estimating_pi(self):
+        """Consider the unit square [0, 1]^2. The area of the square is 1.
+        The area of a quarter circle is pi * r^2 / 4 = pi / 4.
+        So the fraction (quarter circle area) / (total area) = pi / 4.
+
+        Use this to estimate pi.
+        """
+
+        x = Distribution("uniform")
+        y = Distribution("uniform")
+        inside = x**2 + y**2 < 1
+        pi_estimate = 4 * inside
+
+        samples = pi_estimate.sample(9999, random_state=42)
+        np.testing.assert_allclose(samples.mean(), np.pi, atol=0.01)
 
 
 def test_copying():

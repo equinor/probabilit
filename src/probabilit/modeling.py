@@ -530,6 +530,9 @@ class OverloadMixin:
     def __abs__(self):
         return Abs(self)
 
+    def __lt__(self, other):
+        return LessThan(self, other)
+
 
 class Constant(Node, OverloadMixin):
     """A constant is a number."""
@@ -621,7 +624,7 @@ class VariadicTransform(Transform):
 
     def _sample(self, size=None):
         samples = (parent.samples_ for parent in self.parents)
-        return functools.reduce(self.op, samples, self.initial)
+        return functools.reduce(self.op, samples)
 
     def get_parents(self):
         yield from self.parents
@@ -629,12 +632,18 @@ class VariadicTransform(Transform):
 
 class Add(VariadicTransform):
     op = operator.add
-    initial = 0
 
 
 class Multiply(VariadicTransform):
     op = operator.mul
-    initial = 1
+
+
+class Max(VariadicTransform):
+    op = np.maximum
+
+
+class Min(VariadicTransform):
+    op = np.minimum
 
 
 class BinaryTransform(Transform):
@@ -662,6 +671,26 @@ class Power(BinaryTransform):
 
 class Subtract(BinaryTransform):
     op = operator.sub
+
+
+class Equal(BinaryTransform):
+    op = np.equal
+
+
+class LessThan(BinaryTransform):
+    op = operator.lt  # <
+
+
+class LessThanOrEqual(BinaryTransform):
+    op = operator.le  # <=
+
+
+class GreaterThan(BinaryTransform):
+    op = operator.gt  # <
+
+
+class GreaterThanOrEqual(BinaryTransform):
+    op = operator.ge  # <=
 
 
 class UnaryTransform(Transform):
@@ -693,6 +722,14 @@ class Log(UnaryTransform):
 
 class Exp(UnaryTransform):
     op = np.exp
+
+
+class Floor(UnaryTransform):
+    op = np.floor
+
+
+class Ceil(UnaryTransform):
+    op = np.ceil
 
 
 class ScalarFunctionTransform(Transform):
@@ -764,3 +801,5 @@ if __name__ == "__main__":
     plt.figure(figsize=(3, 2))
     plt.scatter(a.samples_, b.samples_, s=2)
     plt.show()
+
+    (a < 1).sample()
