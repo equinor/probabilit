@@ -646,6 +646,12 @@ class Min(VariadicTransform):
     op = np.minimum
 
 
+class Avg(VariadicTransform):
+    def _sample(self, size=None):
+        samples = tuple(parent.samples_ for parent in self.parents)
+        return np.average(np.vstack(samples), axis=0)
+
+
 class BinaryTransform(Transform):
     """Class for binary transforms, such as Divide, Power, Subtract, etc."""
 
@@ -803,3 +809,5 @@ if __name__ == "__main__":
     plt.show()
 
     (a < 1).sample()
+
+    Avg(a, b, c).sample()
