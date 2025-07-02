@@ -423,7 +423,7 @@ class Node(abc.ABC):
                 node.samples_ = node._sample(size=size)
             elif isinstance(node, Distribution):
                 node.samples_ = node._sample(q=next(columns))
-            elif isinstance(node, Transform):
+            elif isinstance(node, (Transform, MarginalDistribution)):
                 node.samples_ = node._sample()
             else:
                 raise TypeError("Node must be Constant, Distribution or Transform.")
@@ -582,7 +582,10 @@ class Distribution(Node, OverloadMixin):
 
         # Sample from the distribution with inverse CDF
         distribution = getattr(stats, self.distr)
-        return distribution(*args, **kwargs).ppf(q)
+        try:
+            return distribution(*args, **kwargs).ppf(q)
+        except AttributeError:
+            return distribution(*args, **kwargs).rvs(size=len(q))
 
     def get_parents(self):
         # A distribution only has parents if it has parameters that are Nodes
@@ -738,6 +741,33 @@ def scalar_transform(func):
     return transformed_function
 
 
+class MarginalDistribution(Node, OverloadMixin):
+    """A maginal distribution is a 'slice' of a multivariate distribution."""
+
+    is_leaf = False
+
+    def __init__(self, distr, d):
+        self.distr = distr
+        self.d = d
+        super().__init__()
+
+    def _sample(self):
+        # Simply slice the parent
+        return self.distr.samples_[:, self.d]
+
+    def get_parents(self):
+        yield self.distr
+
+
+def MultivariateDistribution(distr, *args, **kwargs):
+    """Factory function that yields marginal distributions."""
+    distr = Distribution(distr, *args, **kwargs)
+
+    # TODO: get dimensionality in a smarter way (generalize)
+    d = len(kwargs["alpha"])
+    return [MarginalDistribution(distr, d=i) for i in range(d)]
+
+
 # ========================================================
 if __name__ == "__main__":
     import pytest
@@ -764,3 +794,5 @@ if __name__ == "__main__":
     plt.figure(figsize=(3, 2))
     plt.scatter(a.samples_, b.samples_, s=2)
     plt.show()
+
+    d1, d2, d3 = MultivariateDistribution("dirichlet", alpha=[1, 2, 3])
