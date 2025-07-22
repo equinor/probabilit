@@ -30,7 +30,7 @@ to one distribution is another distribution:
 >>> survivial_prob = Distribution("beta", a=10, b=15)
 >>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
 >>> survived.sample(9, random_state=rng)
-array([1., 1., 1., 0., 2., 1., 1., 0., 2.])
+array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
 
 To understand and examine the modeling language, we can do some computations
 with constants. The computational graph carries out arithmetic operations lazily
@@ -360,6 +360,7 @@ class Node(abc.ABC):
         initial_sampling_nodes = set(
             node for node in self.nodes() if node._is_initial_sampling_node()
         )
+        initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
 
         # Loop over all initial sampling nodes
         G = self.to_graph()
