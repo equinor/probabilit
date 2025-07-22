@@ -1,10 +1,16 @@
 # probabilit
 
-A Python package for Monte Carlo sampling.
+A small Python package for Monte Carlo modeling.
+
+- User friendly API with a modeling language.
+- Built on scipy and numpy.
+- Supports composite distributions (e.g. mean of a distribution can be a distribution).
+- Supports Quasi-Monte Carlo sampling, e.g. Sobol, Halton and LHS.
+- Supports inducing correlations with Iman-Conover.
 
 ## Modeling
 
-The modeling API lets you create a computational graph, where each node is a distribution or constant.
+The modeling API creates lets you create a computational graph, where each node is a distribution, a constant or some transformation.
 Once the method `.sample()` is called on a node, each ancestor node is sampled in turn.
 
 **Example 1 - Height.**
