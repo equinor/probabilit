@@ -27,6 +27,25 @@ np.float64(0.9039039039039038)
 
 ```
 
+When `statistic` is sampled in the code above, the ancestor nodes `men` and `women` are sampled too.
+In each node, results are stored in the `samples_` attribute.
+
+```pycon
+>>> import pandas as pd
+>>> pd.Series(men.samples_).describe()
+count    999.000000
+mean     176.096916
+std        7.326152
+min      153.210671
+25%      171.209087
+50%      176.044660
+75%      180.948085
+max      201.216617
+dtype: float64
+
+```
+
+
 **Example 2 - Bird survival.**
 Here is another example illustrating _composite distributions_, where the argument
 to one distribution is another distribution.
@@ -39,6 +58,22 @@ What is the distribution of the number of birds that survive per nest?
 >>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
 >>> survived.sample(9, random_state=0) # Sample a few values only
 array([2., 1., 1., 2., 2., 2., 2., 0., 0.])
+
+```
+
+**Example 3 - Mutual fund.**
+Suppose you save 1200 units of money per year and that the yearly interest rate has a distribution `N(1.11, 0.15)`.
+How much money will you have over a 20 year horizon?
+
+```pycon
+>>> saved_per_year = 1200
+>>> returns = 0
+>>> for year in range(20):
+...     interest = Distribution("norm", loc=1.11, scale=0.15)
+...     returns = returns * interest + saved_per_year
+>>> samples = returns.sample(999, random_state=42)
+>>> samples.mean(), samples.std()
+(np.float64(76583.58738496085), np.float64(33483.2245611436))
 
 ```
 
