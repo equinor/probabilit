@@ -67,30 +67,27 @@ class TestModelingExamples:
 
         samples = prob.sample(9999, random_state=42)
         np.testing.assert_allclose(samples.mean(), 1 / 4, atol=0.01)
-        
+
     def test_mutual_fund_problem(self):
-        """Suppose you save 1200 units of money per year and that the yearly 
+        """Suppose you save 1200 units of money per year and that the yearly
         interest rate has a   distribution `N(1.11, 0.15)`.
         How much money will you have over a 20 year horizon?
 
-        
         From: https://curvo.eu/backtest/en/market-index/sp-500?currency=eur
-        In the last 33 years, the S&P 500 index (in EUR) had a compound annual 
-        growth rate of 10.83%, a standard deviation of 15.32%, and a Sharpe ratio of 0.66. 
+        In the last 33 years, the S&P 500 index (in EUR) had a compound annual
+        growth rate of 10.83%, a standard deviation of 15.32%, and a Sharpe ratio of 0.66.
         """
-        
+
         saved_per_year = 1200
         returns = 0
         for year in range(20):
             interest = Distribution("norm", loc=1.11, scale=0.15)
             returns = returns * interest + saved_per_year
         samples = returns.sample(999, random_state=42)
-        
+
         # Regression test essentially
         np.testing.assert_allclose(samples.mean(), 76583.58738496085)
         np.testing.assert_allclose(samples.std(), 33483.2245611436)
-        
-        
 
 
 def test_copying():
