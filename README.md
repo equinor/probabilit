@@ -2,6 +2,40 @@
 
 A Python package for Monte Carlo sampling.
 
+## Modeling
+
+The modeling API lets you create a computational graph, where each node is a distribution or constant.
+Once the method `.sample()` is called on a node, each ancestor node is sampled in turn.
+
+**Example 1 - Height.**
+For instance, what is the probability that a man is taller than a woman?
+
+```pycon
+>>> from probabilit.modeling import Distribution
+>>> men = Distribution("norm", loc=176, scale=7.1)
+>>> women = Distribution("norm", loc=162.5, scale=7.1)
+>>> statistic = (men - women > 0)
+>>> samples = statistic.sample(999, random_state=0)
+>>> samples.mean()
+np.float64(0.9039039039039038)
+
+```
+
+**Example 2 - Bird survival.**
+Here is another example illustrating _composite distributions_, where the argument
+to one distribution is another distribution.
+Suppose we have a distribution governing the number off eggs per bird nest for a certain species, and a survival probability.
+What is the distribution of the number of birds that survive per nest?
+
+```pycon
+>>> eggs_per_nest = Distribution("poisson", mu=3)
+>>> survivial_prob = 0.4
+>>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
+>>> survived.sample(9, random_state=0) # Sample a few values only
+array([2., 1., 1., 2., 2., 2., 2., 0., 0.])
+
+```
+
 ## Low-level API
 
 The low-level API contains Numpy functions for working with random variables.
@@ -52,15 +86,5 @@ Now we can induce correlations:
 >>> X_transformed = transform(X)
 >>> format(sp.stats.pearsonr(*X_transformed.T).statistic, ".8f")
 '0.27965287'
-
-```
-
-## Modeling
-
-
-```pycon
->>> from probabilit.modeling import Distribution
->>> a = Distribution("norm", loc=2, scale=1)
->>> a.sample(5, random_state=42)
 
 ```
