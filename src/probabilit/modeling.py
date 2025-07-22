@@ -51,7 +51,7 @@ Let us build a more compliated expression:
 
 Every unique node in this expression can be found:
 
->>> for node in set(expression.nodes()):
+>>> for node in expression.nodes(unique=True):
 ...     print(node)
 Distribution("norm", loc=5, scale=1)
 Distribution("expon", scale=1)
@@ -254,7 +254,7 @@ class Node(abc.ABC):
         return self._id == other._id
 
     def __hash__(self):
-        return self._id
+        raise NotImplementedError()
 
     def copy(self):
         """Copy the Node, including the entire graph above it.
@@ -309,27 +309,39 @@ class Node(abc.ABC):
 
         return id_to_new[self._id]
 
-    def nodes(self):
+    def nodes(self, unique=False):
         """Yields `self` and all ancestors using depth-first-search.
+        
+        Parameters
+        ----------
+        unique : bool, optional
+            If True, each variable is only yielded once. The default is False.
 
         Examples
         --------
-        >>> expression = Distribution("norm") -  2**Constant(2)
+        >>> distr = Distribution("norm")
+        >>> expression = distr + distr
         >>> for node in expression.nodes():
         ...     print(node)
-        Subtract(Distribution("norm"), Power(Constant(2), Constant(2)))
-        Power(Constant(2), Constant(2))
-        Constant(2)
-        Constant(2)
+        Add(Distribution("norm"), Distribution("norm"))
+        Distribution("norm")
+        Distribution("norm")
+        >>> for node in expression.nodes(unique=True):
+        ...     print(node)
+        Add(Distribution("norm"), Distribution("norm"))
         Distribution("norm")
         """
         queue = [(self)]
+        seen = set()
         while queue:
-            yield (node := queue.pop())
+            node = queue.pop()
+            if (not unique) or (unique and (node._id not in seen)):
+                yield node
+            seen.add(node._id)
             queue.extend(node.get_parents())
 
     def get_number_of_distribution_nodes(self):
-        return sum(1 for node in set(self.nodes()) if isinstance(node, Distribution))
+        return sum(1 for node in self.nodes(unique=True) if isinstance(node, Distribution))
 
     def sample(self, size=None, random_state=None):
         """Sample the current node and assign to all node.samples_."""
@@ -352,14 +364,14 @@ class Node(abc.ABC):
         columns = iter(list(cube.T))
 
         # Clear any samples that might exist in the graph
-        for node in set(self.nodes()):
+        for node in self.nodes(unique=True):
             if hasattr(node, "samples_"):
                 delattr(node, "samples_")
 
         # Start with initial sampling nodes, which contain independent variables
-        initial_sampling_nodes = set(
-            node for node in self.nodes() if node._is_initial_sampling_node()
-        )
+        initial_sampling_nodes = [
+            node for node in self.nodes(unique=True) if node._is_initial_sampling_node()
+        ]
         # Ensure consistent ordering for reproducible results
         initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
 
@@ -378,7 +390,7 @@ class Node(abc.ABC):
 
         # Go through all ancestor nodes and create a list [(var, corr), ...]
         correlations = []
-        for node in set(self.nodes()):
+        for node in self.nodes(unique=True):
             if hasattr(node, "_correlations"):
                 correlations.extend(node._correlations)
 
@@ -437,7 +449,7 @@ class Node(abc.ABC):
         (1) It is a Distribution
         (2) None of its ancestors are Distributions (all are Constant/Transform)"""
         is_distribution = isinstance(self, Distribution)
-        ancestors = set(self.nodes()) - set([self])
+        ancestors = [node for node in self.nodes(unique=True) if node._id != self._id]
         ancestors_distr = any(isinstance(node, Distribution) for node in ancestors)
         return is_distribution and not ancestors_distr
 
@@ -467,9 +479,9 @@ class Node(abc.ABC):
         assert corr_mat.ndim == 2
         assert corr_mat.shape[0] == corr_mat.shape[1]
         assert corr_mat.shape[0] == len(variables)
-        assert len(variables) == len(set(variables))
-        nodes = set(self.nodes())
-        assert all(var in nodes for var in variables)
+        assert len(variables) == len(set(v._id for v in variables))
+        nodes = set(node._id for node in self.nodes())
+        assert all(var._id in nodes for var in variables)
         self._correlations.append((list(variables), np.copy(corr_mat)))
         return self
 
