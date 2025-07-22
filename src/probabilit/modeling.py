@@ -360,6 +360,7 @@ class Node(abc.ABC):
         initial_sampling_nodes = set(
             node for node in self.nodes() if node._is_initial_sampling_node()
         )
+        # Ensure consistent ordering for reproducible results
         initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
 
         # Loop over all initial sampling nodes
