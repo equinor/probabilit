@@ -829,7 +829,3 @@ if __name__ == "__main__":
     plt.figure(figsize=(3, 2))
     plt.scatter(a.samples_, b.samples_, s=2)
     plt.show()
-
-    (a < 1).sample()
-
-    Avg(a, b, c).sample()
