@@ -30,7 +30,7 @@ to one distribution is another distribution:
 >>> survivial_prob = Distribution("beta", a=10, b=15)
 >>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
 >>> survived.sample(9, random_state=rng)
-array([1., 1., 1., 0., 2., 1., 1., 0., 2.])
+array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
 
 To understand and examine the modeling language, we can do some computations
 with constants. The computational graph carries out arithmetic operations lazily
@@ -360,6 +360,8 @@ class Node(abc.ABC):
         initial_sampling_nodes = set(
             node for node in self.nodes() if node._is_initial_sampling_node()
         )
+        # Ensure consistent ordering for reproducible results
+        initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
 
         # Loop over all initial sampling nodes
         G = self.to_graph()
@@ -530,6 +532,23 @@ class OverloadMixin:
     def __abs__(self):
         return Abs(self)
 
+    def __lt__(self, other):
+        return LessThan(self, other)
+
+    def __le__(self, other):
+        return LessThanOrEqual(self, other)
+
+    def __gt__(self, other):
+        return GreaterThan(self, other)
+
+    def __ge__(self, other):
+        return GreaterThanOrEqual(self, other)
+
+    # TODO: __eq__ (==) and __ne__ (!=) are not implemented here (yet),
+    # because they are also used in set(nodes), which relies upon
+    # both equality checks and __hash__. We should probably remove all usage
+    # of set() within methods like  sample(), to free up == and != for modeling.
+
 
 class Constant(Node, OverloadMixin):
     """A constant is a number."""
@@ -626,7 +645,7 @@ class VariadicTransform(Transform):
 
     def _sample(self, size=None):
         samples = (parent.samples_ for parent in self.parents)
-        return functools.reduce(self.op, samples, self.initial)
+        return functools.reduce(self.op, samples)
 
     def get_parents(self):
         yield from self.parents
@@ -634,12 +653,32 @@ class VariadicTransform(Transform):
 
 class Add(VariadicTransform):
     op = operator.add
-    initial = 0
 
 
 class Multiply(VariadicTransform):
     op = operator.mul
-    initial = 1
+
+
+class Max(VariadicTransform):
+    op = np.maximum
+
+
+class Min(VariadicTransform):
+    op = np.minimum
+
+
+class All(VariadicTransform):
+    op = np.logical_and
+
+
+class Any(VariadicTransform):
+    op = np.logical_or
+
+
+class Avg(VariadicTransform):
+    def _sample(self, size=None):
+        samples = tuple(parent.samples_ for parent in self.parents)
+        return np.average(np.vstack(samples), axis=0)
 
 
 class BinaryTransform(Transform):
@@ -667,6 +706,26 @@ class Power(BinaryTransform):
 
 class Subtract(BinaryTransform):
     op = operator.sub
+
+
+class Equal(BinaryTransform):
+    op = np.equal
+
+
+class LessThan(BinaryTransform):
+    op = operator.lt  # <
+
+
+class LessThanOrEqual(BinaryTransform):
+    op = operator.le  # <=
+
+
+class GreaterThan(BinaryTransform):
+    op = operator.gt  # >
+
+
+class GreaterThanOrEqual(BinaryTransform):
+    op = operator.ge  # >=
 
 
 class UnaryTransform(Transform):
@@ -698,6 +757,14 @@ class Log(UnaryTransform):
 
 class Exp(UnaryTransform):
     op = np.exp
+
+
+class Floor(UnaryTransform):
+    op = np.floor
+
+
+class Ceil(UnaryTransform):
+    op = np.ceil
 
 
 class ScalarFunctionTransform(Transform):

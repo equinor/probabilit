@@ -1,5 +1,93 @@
-from probabilit.modeling import Constant, Log, Exp, Distribution
+from probabilit.modeling import (
+    Constant,
+    Log,
+    Exp,
+    Distribution,
+    Floor,
+    Equal,
+    All,
+    Min,
+    Max,
+)
 import numpy as np
+
+
+class TestModelingExamples:
+    def test_die_problem(self):
+        """If we throw 2 die, what is the probability that each one ends up
+        with the same number?"""
+
+        die1 = Floor(1 + Distribution("uniform") * 6)
+        die2 = Floor(1 + Distribution("uniform") * 6)
+        equal = Equal(die1, die2)
+
+        samples = equal.sample(999, random_state=42)
+
+        np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.001)
+
+    def test_estimating_pi(self):
+        """Consider the unit square [0, 1]^2. The area of the square is 1.
+        The area of a quarter circle is pi * r^2 / 4 = pi / 4.
+        So the fraction (quarter circle area) / (total area) = pi / 4.
+
+        Use this to estimate pi.
+        """
+
+        x = Distribution("uniform")
+        y = Distribution("uniform")
+        inside = x**2 + y**2 < 1
+        pi_estimate = 4 * inside
+
+        samples = pi_estimate.sample(9999, random_state=42)
+        np.testing.assert_allclose(samples.mean(), np.pi, atol=0.01)
+
+    def test_broken_stick_problem(self):
+        """Consider a stick of length 1. Pick two points uniformly at random on
+        the stick, and break the stick at those points. What is the probability
+        that the three segments obtained in this way form a triangle?
+
+        Of course this is the probability that no one of the short sticks is
+        longer than 1/2. This probability turns out to be 1/4.
+
+        https://sites.math.duke.edu/education/webfeatsII/gdrive/Team%20D/project/brokenstick.htm
+        https://mathoverflow.net/questions/2014/if-you-break-a-stick-at-two-points-chosen-uniformly-the-probability-the-three-r
+        """
+
+        # Cuts along the stick
+        cut1 = Distribution("uniform", loc=0, scale=1)
+        cut2 = Distribution("uniform", loc=0, scale=1)
+
+        # The lengths
+        length1 = Min(cut1, cut2)
+        length2 = Max(cut1, cut2) - Min(cut1, cut2)
+        length3 = 1 - Max(cut1, cut2)
+
+        # No one of the short sticks is longer than 1/2 <=> all are shorter
+        prob = All(length1 < 1 / 2, length2 < 1 / 2, length3 < 1 / 2)
+
+        samples = prob.sample(9999, random_state=42)
+        np.testing.assert_allclose(samples.mean(), 1 / 4, atol=0.01)
+
+    def test_mutual_fund_problem(self):
+        """Suppose you save 1200 units of money per year and that the yearly
+        interest rate has a   distribution `N(1.11, 0.15)`.
+        How much money will you have over a 20 year horizon?
+
+        From: https://curvo.eu/backtest/en/market-index/sp-500?currency=eur
+        In the last 33 years, the S&P 500 index (in EUR) had a compound annual
+        growth rate of 10.83%, a standard deviation of 15.32%, and a Sharpe ratio of 0.66.
+        """
+
+        saved_per_year = 1200
+        returns = 0
+        for year in range(20):
+            interest = Distribution("norm", loc=1.11, scale=0.15)
+            returns = returns * interest + saved_per_year
+        samples = returns.sample(999, random_state=42)
+
+        # Regression test essentially
+        np.testing.assert_allclose(samples.mean(), 76583.58738496085)
+        np.testing.assert_allclose(samples.std(), 33483.2245611436)
 
 
 def test_copying():

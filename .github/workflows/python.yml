@@ -41,3 +41,7 @@ jobs:
     - name: Run pytest
       run: |
         pytest . --doctest-modules -v
+
+    - name: Run doctests in README
+      run: |
+        python -m doctest README.md
