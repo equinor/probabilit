@@ -3,7 +3,9 @@ Modeling
 --------
 
 Probabilit lets the user perform Monte-Carlo sampling using a high-level
-modeling language, which creates a computational graph.
+modeling language.
+The modeling language creates a lazy computational graph.
+When a node is sampled, all ancestor nodes are sampled in turn and the samples are propagated down in the graph, from parent nodes to child nodes.
 
 For instance, to compute the shipping cost of a box where we are uncertain
 about the measurements:
@@ -20,11 +22,11 @@ about the measurements:
 20.00139737515...
 
 Distributions are built on top of scipy, so "norm" refers to the name of the
-normal distribution as given in `scipy.stats`, and the arguments to the distribution
-must also match those given by `scipy.stats.norm`.
+normal distribution as given in `scipy.stats`, and the arguments to the
+distribution must also match those given by `scipy.stats.norm`.
 
-Here is another example showing composite distributions, where the argument
-to one distribution is another distribution:
+Here is another example demonstrating composite distributions, where an
+argument to one distribution is another distribution:
 
 >>> eggs_per_nest = Distribution("poisson", mu=3)
 >>> survivial_prob = Distribution("beta", a=10, b=15)
@@ -32,9 +34,9 @@ to one distribution is another distribution:
 >>> survived.sample(9, random_state=rng)
 array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
 
-To understand and examine the modeling language, we can do some computations
-with constants. The computational graph carries out arithmetic operations lazily
-once a model is sampled. Mixing numbers with nodes is allowed, but at least one
+To understand and examine the modeling language, we can perform  computations
+using constants. The computational graph carries out arithmetic operations
+when the model is sampled. Mixing numbers with nodes is allowed, but at least one
 expression or term must be a probabilit class instance:
 
 >>> a = Constant(1)
@@ -62,7 +64,7 @@ Constant(5)
 Multiply(Distribution("expon", scale=1), Constant(5))
 Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))), Multiply(Distribution("expon", scale=1), Constant(5)))
 
-Sampling the expression is simple enough:
+Sampling the expression is simple:
 
 >>> expression.sample(5, random_state=rng)
 array([ 2.70764145, 36.58578812,  7.07064239,  1.84433247,  3.90951632])
@@ -73,10 +75,10 @@ Sampling the expression has the side effect that `.samples_` is populated on
 >>> a.samples_
 array([4.51589278, 4.37788659, 5.25960812, 5.80609507, 4.33770499])
 
-To sample using e.g. Latin Hypercube, do the following:
+To sample using e.g. the Latin Hypercube algorithm, do the following:
 
 >>> from scipy.stats.qmc import LatinHypercube
->>> d = expression.get_number_of_distribution_nodes()
+>>> d = expression.num_distribution_nodes()
 >>> hypercube = LatinHypercube(d=d, rng=rng)
 >>> hypercube_samples = hypercube.random(5) # Draw 5 samples
 >>> expression.sample_from_cube(hypercube_samples)
@@ -90,6 +92,18 @@ Here is an even more complex expression:
 >>> expression = a*a - Add(a, b, c) + Abs(b)**Abs(c) + Exp(1 / Abs(c))
 >>> expression.sample(5, random_state=rng)
 array([ 4.70542018, 14.43250192,  6.74494838, -0.14020459, -3.27334554])
+
+Since nodes are hashable and can be used in sets, __hash__ and __eq__ must both
+be defined. Therefore we cannot use `==` for modeling. Use the Equal node
+instead. This is only relevant in some rare cases when equality is part of
+a model, since for most real-valued distribution (e.g. Normal) equality does
+not make sense.
+
+>>> dice1 = Distribution("uniform", loc=1, scale=6) // 1
+>>> dice2 = Distribution("uniform", loc=1, scale=6) // 1
+>>> equal_result = Equal(dice1, dice2)
+>>> float(equal_result.sample(999, random_state=42).mean())
+0.166...
 
 Functions
 ---------
@@ -328,7 +342,7 @@ class Node(abc.ABC):
             yield (node := queue.pop())
             queue.extend(node.get_parents())
 
-    def get_number_of_distribution_nodes(self):
+    def num_distribution_nodes(self):
         return sum(1 for node in set(self.nodes()) if isinstance(node, Distribution))
 
     def sample(self, size=None, random_state=None):
@@ -337,7 +351,7 @@ class Node(abc.ABC):
         random_state = check_random_state(random_state)
 
         # Draw a cube of random variables in [0, 1]
-        cube = random_state.random((size, self.get_number_of_distribution_nodes()))
+        cube = random_state.random((size, self.num_distribution_nodes()))
 
         return self.sample_from_cube(cube)
 
@@ -346,7 +360,7 @@ class Node(abc.ABC):
         distributions. The cube must have shape (dimensionality, num_samples)."""
         assert nx.is_directed_acyclic_graph(self.to_graph())
         size, n_dim = cube.shape
-        assert n_dim == self.get_number_of_distribution_nodes()
+        assert n_dim == self.num_distribution_nodes()
 
         # Prepare columns of quantiles, one column for each Distribution
         columns = iter(list(cube.T))
@@ -507,6 +521,12 @@ class OverloadMixin:
 
     def __rmul__(self, other):
         return Multiply(self, other)
+
+    def __floordiv__(self, other):
+        return FloorDivide(self, other)
+
+    def __rfloordiv__(self, other):
+        return FloorDivide(other, self)
 
     def __truediv__(self, other):
         return Divide(self, other)
@@ -689,6 +709,10 @@ class BinaryTransform(Transform):
 
     def get_parents(self):
         yield from self.parents
+
+
+class FloorDivide(BinaryTransform):
+    op = np.floor_divide
 
 
 class Divide(BinaryTransform):
