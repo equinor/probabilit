@@ -93,11 +93,12 @@ Here is an even more complex expression:
 >>> expression.sample(5, random_state=rng)
 array([ 4.70542018, 14.43250192,  6.74494838, -0.14020459, -3.27334554])
 
-Since nodes are hashable and can be used in sets, __hash__ and __eq__ must both
-be defined. Therefore we cannot use `==` for modeling. Use the Equal node
-instead. This is only relevant in some rare cases when equality is part of
-a model, since for most real-valued distribution (e.g. Normal) equality does
-not make sense.
+Nodes are hashable and can be used in sets, so __hash__ and __eq__ must both
+be defined. We cannot use `==` for modeling since equality in that context has
+another meaning. Use the Equal node instead. This is only relevant in cases
+when equality is part of a model. For real-valued distribution (e.g. Normal)
+equality does not make sense since the probability that two floats are equal
+is zero.
 
 >>> dice1 = Distribution("uniform", loc=1, scale=6) // 1
 >>> dice2 = Distribution("uniform", loc=1, scale=6) // 1
@@ -537,6 +538,12 @@ class OverloadMixin:
     def __rtruediv__(self, other):
         return Divide(other, self)
 
+    def __mod__(self, other):
+        return Mod(self, other)
+
+    def __rmod__(self, other):
+        return Mod(other, self)
+
     def __sub__(self, other):
         return Subtract(self, other)
 
@@ -716,6 +723,10 @@ class BinaryTransform(Transform):
 
 class FloorDivide(BinaryTransform):
     op = np.floor_divide
+
+
+class Mod(BinaryTransform):
+    op = np.mod
 
 
 class Divide(BinaryTransform):
