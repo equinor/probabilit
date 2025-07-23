@@ -391,6 +391,7 @@ class Node(abc.ABC):
             node.samples_ = node._sample(q=next(columns))
 
         # Go through all ancestor nodes and create a list [(var, corr), ...]
+        # that contains all correlations we must induce
         correlations = []
         for node in set(self.nodes()):
             if hasattr(node, "_correlations"):
@@ -411,6 +412,8 @@ class Node(abc.ABC):
 
         # Map all variables to integers
         all_variables = list(functools.reduce(set.union, variable_sets, set()))
+        # Ensure consistent ordering for reproducible results
+        all_variables = sorted(all_variables, key=lambda n: n._id)
         var_to_int = {v: i for (i, v) in enumerate(all_variables)}
         correlations = [
             (tuple(var_to_int[var] for var in variables), corrmat)
