@@ -293,7 +293,7 @@ class Node(abc.ABC):
 
             # Now that the node has been updated, update references to parents
             # to point to Nodes in the new copied graph instead of the old one.
-            if isinstance(copied, (Distribution, ScalarFunctionTransform)):
+            if isinstance(copied, (AbstractDistribution, ScalarFunctionTransform)):
                 copied.args = tuple(update(arg) for arg in copied.args)
                 copied.kwargs = {k: update(v) for (k, v) in copied.kwargs.items()}
             elif isinstance(copied, (VariadicTransform, BinaryTransform)):
@@ -328,9 +328,7 @@ class Node(abc.ABC):
 
     def num_distribution_nodes(self):
         return sum(
-            1
-            for node in set(self.nodes())
-            if isinstance(node, (Distribution, EmpiricalDistribution))
+            1 for node in set(self.nodes()) if isinstance(node, AbstractDistribution)
         )
 
     def sample(self, size=None, random_state=None, method=None):
@@ -384,11 +382,11 @@ class Node(abc.ABC):
             # Sample all ancestors
             ancestors = G.subgraph(nx.ancestors(G, node))
             for ancestor in nx.topological_sort(ancestors):
-                assert isinstance(ancestor, (Constant, Distribution))
+                assert isinstance(ancestor, (Constant, AbstractDistribution))
                 ancestor.samples_ = ancestor._sample(size=size)
 
             # Sample the node
-            assert isinstance(node, (Distribution, EmpiricalDistribution))
+            assert isinstance(node, AbstractDistribution)
             node.samples_ = node._sample(q=next(columns))
 
         # Go through all ancestor nodes and create a list [(var, corr), ...]
@@ -441,7 +439,7 @@ class Node(abc.ABC):
                 continue
             elif isinstance(node, Constant):
                 node.samples_ = node._sample(size=size)
-            elif isinstance(node, (Distribution, EmpiricalDistribution)):
+            elif isinstance(node, AbstractDistribution):
                 node.samples_ = node._sample(q=next(columns))
             elif isinstance(node, Transform):
                 node.samples_ = node._sample()
@@ -454,12 +452,12 @@ class Node(abc.ABC):
         """A node is an initial sample node iff:
         (1) It is a Distribution
         (2) None of its ancestors are Distributions (all are Constant/Transform)"""
-        if isinstance(self, EmpiricalDistribution):
-            return True
 
-        is_distribution = isinstance(self, Distribution)
+        is_distribution = isinstance(self, AbstractDistribution)
         ancestors = set(self.nodes()) - set([self])
-        ancestors_distr = any(isinstance(node, Distribution) for node in ancestors)
+        ancestors_distr = any(
+            isinstance(node, AbstractDistribution) for node in ancestors
+        )
         return is_distribution and not ancestors_distr
 
     def correlate(self, *variables, corr_mat):
@@ -604,7 +602,11 @@ class Constant(Node, OverloadMixin):
         return f"{type(self).__name__}({self.value})"
 
 
-class Distribution(Node, OverloadMixin):
+class AbstractDistribution(Node, OverloadMixin, abc.ABC):
+    pass
+
+
+class Distribution(AbstractDistribution):
     """A distribution is a sampling node with or without ancestors."""
 
     def __init__(self, distr, *args, **kwargs):
@@ -647,7 +649,7 @@ class Distribution(Node, OverloadMixin):
         return list(self.get_parents()) == []
 
 
-class EmpiricalDistribution(Node, OverloadMixin):
+class EmpiricalDistribution(AbstractDistribution):
     """A distribution is a sampling node with or without ancestors.
 
     A thin wrapper around numpy.quantile."""
@@ -672,7 +674,7 @@ class EmpiricalDistribution(Node, OverloadMixin):
 # ========================================================
 
 
-class Transform(Node, abc.ABC, OverloadMixin):
+class Transform(Node, OverloadMixin, abc.ABC):
     """Transform nodes represent arithmetic operations."""
 
     is_leaf = False
@@ -898,4 +900,5 @@ if __name__ == "__main__":
     # =========================
 
     cost = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
-    (cost**2).sample(99, random_state=42)
+    norm = Distribution("norm", loc=cost, scale=1)
+    (norm**2).sample(99, random_state=42)
