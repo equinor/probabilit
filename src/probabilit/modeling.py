@@ -75,15 +75,6 @@ Sampling the expression has the side effect that `.samples_` is populated on
 >>> a.samples_
 array([4.51589278, 4.37788659, 5.25960812, 5.80609507, 4.33770499])
 
-To sample using e.g. the Latin Hypercube algorithm, do the following:
-
->>> from scipy.stats.qmc import LatinHypercube
->>> d = expression.num_distribution_nodes()
->>> hypercube = LatinHypercube(d=d, rng=rng)
->>> hypercube_samples = hypercube.random(5) # Draw 5 samples
->>> expression.sample_from_cube(hypercube_samples)
-array([ 1.20438726, 12.40283222,  5.02130766, 16.45109076, 77.12874028])
-
 Here is an even more complex expression:
 
 >>> a = Distribution("norm", loc=0, scale=1)
@@ -106,6 +97,41 @@ is zero.
 >>> float(equal_result.sample(999, random_state=42).mean())
 0.166...
 
+Empirical distributions may also be used. They wrap np.quantile and take the
+same arguments. For instance, to sample from a dice:
+
+>>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
+>>> dice.sample(9, random_state=42)
+array([2, 6, 4, 4, 1, 1, 1, 5, 4])
+
+To sample from a non-parametric distribution defined by the data:
+
+>>> cost = EmpiricalDistribution([200, 200, 300, 250, 225])
+>>> cost.sample(9, random_state=42)
+array([212.45401188, 290.14286128, 248.19939418, 234.86584842,
+       200.        , 200.        , 200.        , 273.23522915,
+       235.11150117])
+
+Samplers
+--------
+The default sampling uses pseudo-random numbers. To use e.g. latin hybercube
+sampling, pass the `method` argument into `.sample()`.
+
+>>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
+>>> float(dice.sample(9, random_state=1, method="lhs").mean())
+3.222...
+>>> float(dice.sample(9, random_state=1, method=None).mean())
+1.888...
+
+To retain more control, use the `sample_from_quantiles` method instead:
+
+>>> from scipy.stats.qmc import LatinHypercube
+>>> d = expression.num_distribution_nodes()
+>>> hypercube = LatinHypercube(d=d, rng=rng, optimization="random-cd")
+>>> hypercube_samples = hypercube.random(5) # Draw 5 samples
+>>> expression.sample_from_quantiles(hypercube_samples)
+array([ 7.80785741,  3.72416016,  3.77849849, -3.83561905, 38.02479019])
+
 Functions
 ---------
 
@@ -124,7 +150,7 @@ Now we can create a computational graph:
 
 >>> a = Distribution("norm", loc=0, scale=1)
 >>> b = Distribution("norm", loc=0, scale=2)
->>> expression = function(a, b) # Function is not actually called here
+>>> expression = function(a, b) # Function is not actually evaluated here
 
 Now sample 'through' the function:
 
@@ -135,6 +161,7 @@ array([0.        , 0.        , 0.45555522, 0.        , 0.        ])
 import operator
 import functools
 import numpy as np
+import scipy as sp
 import numbers
 from scipy import stats
 import abc
@@ -143,57 +170,13 @@ import networkx as nx
 from scipy._lib._util import check_random_state
 from probabilit.iman_conover import ImanConover
 from probabilit.correlation import nearest_correlation_matrix
+from probabilit.utils import build_corrmat, zip_args
 import copy
 
 
 # =============================================================================
 # FUNCTIONS
 # =============================================================================
-
-
-def zip_args(args, kwargs):
-    """Zip argument and keyword arguments for repeated function calls.
-
-    Examples
-    --------
-    >>> args = ((1, 2, 3), itertools.repeat(None))
-    >>> kwargs = {"a": (5, 6, 7), "b": itertools.repeat(9)}
-    >>> for args_i, kwargs_i in zip_args(args, kwargs):
-    ...     print(args_i, kwargs_i)
-    (1, None) {'a': 5, 'b': 9}
-    (2, None) {'a': 6, 'b': 9}
-    (3, None) {'a': 7, 'b': 9}
-    """
-    zipped_args = zip(*args) if args else itertools.repeat(args)
-    zipped_kwargs = zip(*kwargs.values()) if kwargs else itertools.repeat(kwargs)
-
-    for args_i, kwargs_i in zip(zipped_args, zipped_kwargs):
-        yield args_i, dict(zip(kwargs.keys(), kwargs_i))
-
-
-def build_corrmat(correlations):
-    """Given a list of [(indices1, corrmat1), (indices2, corrmat2), ...],
-    create a big correlation matrix.
-
-    Examples
-    --------
-    >>> correlations = [((0, 2), np.array([[1, 0.5], [0.5, 1]]))]
-    >>> build_corrmat(correlations)
-    array([[1. , 0. , 0.5],
-           [0. , 1. , 0. ],
-           [0.5, 0. , 1. ]])
-    """
-    # TODO: If no correlation is given, we implicitly assume zero.
-    # For instance, if no correlation between indices (0, 3) is given
-    # in the input data, then C[0, 3] = C[3, 0] = 0.0, which is strictly
-    # speaking not the same (no preference vs. preference for 0 corr)
-    n = max(max(idx) for (idx, _) in correlations)
-    C = np.eye(n + 1, dtype=float)
-
-    for idx_i, corrmat_i in correlations:
-        C[np.ix_(idx_i, idx_i)] = corrmat_i
-
-    return C
 
 
 def python_to_prob(argument):
@@ -344,27 +327,44 @@ class Node(abc.ABC):
             queue.extend(node.get_parents())
 
     def num_distribution_nodes(self):
-        return sum(1 for node in set(self.nodes()) if isinstance(node, Distribution))
+        return sum(
+            1
+            for node in set(self.nodes())
+            if isinstance(node, (Distribution, EmpiricalDistribution))
+        )
 
-    def sample(self, size=None, random_state=None):
+    def sample(self, size=None, random_state=None, method=None):
         """Sample the current node and assign to all node.samples_."""
         size = 1 if size is None else size
-        random_state = check_random_state(random_state)
+        d = self.num_distribution_nodes()
 
-        # Draw a cube of random variables in [0, 1]
-        cube = random_state.random((size, self.num_distribution_nodes()))
+        # Draw a quantiles of random variables in [0, 1]
+        if method is None:
+            random_state = check_random_state(random_state)
+            quantiles = random_state.random((size, d))
+        elif method.lower().strip() == "lhs":
+            lhs = sp.stats.qmc.LatinHypercube(d=d, rng=random_state)
+            quantiles = lhs.random(n=size)
+        elif method.lower().strip() == "halton":
+            halton = sp.stats.qmc.Halton(d=d, rng=random_state)
+            quantiles = halton.random(n=size)
+        elif method.lower().strip() == "sobol":
+            sobol = sp.stats.qmc.Sobol(d=d, rng=random_state)
+            quantiles = sobol.random(n=size)
+        else:
+            raise ValueError(f"Invalid method: {method}")
 
-        return self.sample_from_cube(cube)
+        return self.sample_from_quantiles(quantiles)
 
-    def sample_from_cube(self, cube):
-        """Use samples from a cube of quantiles in [0, 1] to sample all
-        distributions. The cube must have shape (dimensionality, num_samples)."""
+    def sample_from_quantiles(self, quantiles):
+        """Use samples from an array of quantiles in [0, 1] to sample all
+        distributions. The array must have shape (dimensionality, num_samples)."""
         assert nx.is_directed_acyclic_graph(self.to_graph())
-        size, n_dim = cube.shape
+        size, n_dim = quantiles.shape
         assert n_dim == self.num_distribution_nodes()
 
         # Prepare columns of quantiles, one column for each Distribution
-        columns = iter(list(cube.T))
+        columns = iter(list(quantiles.T))
 
         # Clear any samples that might exist in the graph
         for node in set(self.nodes()):
@@ -388,7 +388,7 @@ class Node(abc.ABC):
                 ancestor.samples_ = ancestor._sample(size=size)
 
             # Sample the node
-            assert isinstance(node, Distribution)
+            assert isinstance(node, (Distribution, EmpiricalDistribution))
             node.samples_ = node._sample(q=next(columns))
 
         # Go through all ancestor nodes and create a list [(var, corr), ...]
@@ -402,14 +402,14 @@ class Node(abc.ABC):
         for variables, _ in correlations:
             for variable in variables:
                 if variable not in initial_sampling_nodes:
-                    raise ValueError("Cannot correlate variable: {variable}")
+                    raise ValueError(f"Cannot correlate variable: {variable}")
 
         # Check that no correlation has been specified twice
         variable_sets = [set(variables) for (variables, _) in correlations]
         for vars1, vars2 in itertools.combinations(variable_sets, 2):
             common = vars1.intersection(vars2)
             if len(common) > 1:
-                raise ValueError("Correlations specified more than once: {common}")
+                raise ValueError(f"Correlations specified more than once: {common}")
 
         # Map all variables to integers
         all_variables = list(functools.reduce(set.union, variable_sets, set()))
@@ -441,7 +441,7 @@ class Node(abc.ABC):
                 continue
             elif isinstance(node, Constant):
                 node.samples_ = node._sample(size=size)
-            elif isinstance(node, Distribution):
+            elif isinstance(node, (Distribution, EmpiricalDistribution)):
                 node.samples_ = node._sample(q=next(columns))
             elif isinstance(node, Transform):
                 node.samples_ = node._sample()
@@ -454,6 +454,9 @@ class Node(abc.ABC):
         """A node is an initial sample node iff:
         (1) It is a Distribution
         (2) None of its ancestors are Distributions (all are Constant/Transform)"""
+        if isinstance(self, EmpiricalDistribution):
+            return True
+
         is_distribution = isinstance(self, Distribution)
         ancestors = set(self.nodes()) - set([self])
         ancestors_distr = any(isinstance(node, Distribution) for node in ancestors)
@@ -642,6 +645,28 @@ class Distribution(Node, OverloadMixin):
     @property
     def is_leaf(self):
         return list(self.get_parents()) == []
+
+
+class EmpiricalDistribution(Node, OverloadMixin):
+    """A distribution is a sampling node with or without ancestors.
+
+    A thin wrapper around numpy.quantile."""
+
+    is_leaf = True
+
+    def __init__(self, data, **kwargs):
+        self.data = np.array(data)
+        self.kwargs = kwargs
+        super().__init__()
+
+    def __repr__(self):
+        return f"{type(self).__name__}()"
+
+    def _sample(self, q):
+        return np.quantile(a=self.data, q=q, **self.kwargs)
+
+    def get_parents(self):
+        return []  # A Constant does not have any parents
 
 
 # ========================================================
@@ -869,3 +894,8 @@ if __name__ == "__main__":
     plt.figure(figsize=(3, 2))
     plt.scatter(a.samples_, b.samples_, s=2)
     plt.show()
+
+    # =========================
+
+    cost = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
+    (cost**2).sample(99, random_state=42)
