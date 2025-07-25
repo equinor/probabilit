@@ -40,7 +40,43 @@ def _is_positive_definite(X):
 
 
 class Correlator(abc.ABC):
-    pass
+    def __init__(self, correlation_matrix):
+        if not isinstance(correlation_matrix, np.ndarray):
+            raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
+        if not correlation_matrix.ndim == 2:
+            raise ValueError("Correlation matrix must be square.")
+        if not correlation_matrix.shape[0] == correlation_matrix.shape[1]:
+            raise ValueError("Correlation matrix must be square.")
+        if not np.allclose(np.diag(correlation_matrix), 1.0):
+            raise ValueError("Correlation matrix must have 1.0 on diagonal.")
+        if not np.allclose(correlation_matrix.T, correlation_matrix):
+            raise ValueError("Correlation matrix must be symmetric.")
+        if not _is_positive_definite(correlation_matrix):
+            raise ValueError("Correlation matrix must be positive definite.")
+
+        self.C = correlation_matrix.copy()
+        self.P = np.linalg.cholesky(self.C)
+
+    def _validate_X(self, X):
+        """Validate array X of shape (observations, variables)."""
+
+        if not isinstance(X, np.ndarray):
+            raise TypeError("Input argument `X` must be NumPy array.")
+        if not X.ndim == 2:
+            raise ValueError("Correlation matrix must be square.")
+
+        N, K = X.shape
+
+        if self.P.shape[0] != K:
+            msg = f"Shape of `X` ({X.shape}) does not match shape of "
+            msg += f"correlation matrix ({self.P.shape})"
+            raise ValueError(msg)
+
+        if N <= K:
+            msg = f"The matrix X must have rows > columns. Got shape: {X.shape}"
+            raise ValueError(msg)
+
+        return N, K
 
 
 class Cholesky(Correlator):
@@ -79,21 +115,7 @@ class Cholesky(Correlator):
         array([1.11972638, 0.75668173])
 
         """
-        if not isinstance(correlation_matrix, np.ndarray):
-            raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
-        if not correlation_matrix.ndim == 2:
-            raise ValueError("Correlation matrix must be square.")
-        if not correlation_matrix.shape[0] == correlation_matrix.shape[1]:
-            raise ValueError("Correlation matrix must be square.")
-        if not np.allclose(np.diag(correlation_matrix), 1.0):
-            raise ValueError("Correlation matrix must have 1.0 on diagonal.")
-        if not np.allclose(correlation_matrix.T, correlation_matrix):
-            raise ValueError("Correlation matrix must be symmetric.")
-        if not _is_positive_definite(correlation_matrix):
-            raise ValueError("Correlation matrix must be positive definite.")
-
-        self.C = correlation_matrix.copy()
-        self.P = np.linalg.cholesky(self.C)
+        super().__init__(correlation_matrix)
 
     def __call__(self, X):
         """Transform an input matrix X.
@@ -112,21 +134,8 @@ class Cholesky(Correlator):
             correlation structure that is more similar to `correlation_matrix`.
 
         """
-        if not isinstance(X, np.ndarray):
-            raise TypeError("Input argument `X` must be NumPy array.")
-        if not X.ndim == 2:
-            raise ValueError("Correlation matrix must be square.")
-
+        self._validate_X(X)
         N, K = X.shape
-
-        if self.P.shape[0] != K:
-            msg = f"Shape of `X` ({X.shape}) does not match shape of "
-            msg += f"correlation matrix ({self.P.shape})"
-            raise ValueError(msg)
-
-        if N <= K:
-            msg = f"The matrix X must have rows > columns. Got shape: {X.shape}"
-            raise ValueError(msg)
 
         # Remove existing mean and std from marginal distributions
         mean = np.mean(X, axis=0)
@@ -227,21 +236,7 @@ class ImanConover(Correlator):
         >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
         0.592541...
         """
-        if not isinstance(correlation_matrix, np.ndarray):
-            raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
-        if not correlation_matrix.ndim == 2:
-            raise ValueError("Correlation matrix must be square.")
-        if not correlation_matrix.shape[0] == correlation_matrix.shape[1]:
-            raise ValueError("Correlation matrix must be square.")
-        if not np.allclose(np.diag(correlation_matrix), 1.0):
-            raise ValueError("Correlation matrix must have 1.0 on diagonal.")
-        if not np.allclose(correlation_matrix.T, correlation_matrix):
-            raise ValueError("Correlation matrix must be symmetric.")
-        if not _is_positive_definite(correlation_matrix):
-            raise ValueError("Correlation matrix must be positive definite.")
-
-        self.C = correlation_matrix.copy()
-        self.P = np.linalg.cholesky(self.C)
+        super().__init__(correlation_matrix)
 
     def __call__(self, X):
         """Transform an input matrix X.
@@ -263,21 +258,8 @@ class ImanConover(Correlator):
             correlation structure that is more similar to `correlation_matrix`.
 
         """
-        if not isinstance(X, np.ndarray):
-            raise TypeError("Input argument `X` must be NumPy array.")
-        if not X.ndim == 2:
-            raise ValueError("Correlation matrix must be square.")
-
+        self._validate_X(X)
         N, K = X.shape
-
-        if self.P.shape[0] != K:
-            msg = f"Shape of `X` ({X.shape}) does not match shape of "
-            msg += f"correlation matrix ({self.P.shape})"
-            raise ValueError(msg)
-
-        if N <= K:
-            msg = f"The matrix X must have rows > columns. Got shape: {X.shape}"
-            raise ValueError(msg)
 
         # STEP ONE - Use van der Waerden scores to transform data to
         # approximately multivariate normal (but with correlations).
@@ -325,15 +307,26 @@ def decorrelate(X, remove_variance=True):
     ...               [2. , 1.1],
     ...               [2.1, 3. ]])
     >>> X_decorr = decorrelate(X)
+
+    The result has covariance equal to the identity matrix:
+
     >>> np.cov(X_decorr, rowvar=False).round(6)
     array([[1., 0.],
            [0., 1.]])
+
+    The mean is preserved:
+
     >>> np.allclose(np.mean(X, axis=0), np.mean(X_decorr, axis=0))
     True
+
+    The variance is removed:
+
     >>> np.var(X, axis=0)
     array([0.24666667, 0.84666667])
     >>> np.var(X_decorr, axis=0, ddof=1)
     array([1., 1.])
+
+    We can optionally decorrelate while preserving the variance:
 
     >>> X_decorr = decorrelate(X, remove_variance=False)
     >>> np.cov(X_decorr, rowvar=False).round(6)
