@@ -28,6 +28,7 @@ Induce correlations
 
 import numpy as np
 import scipy as sp
+import abc
 
 
 def _is_positive_definite(X):
@@ -38,7 +39,128 @@ def _is_positive_definite(X):
         return False
 
 
-class ImanConover:
+class Correlator(abc.ABC):
+    pass
+
+
+class Cholesky(Correlator):
+    def __init__(self, correlation_matrix):
+        """Create a Cholesky transform.
+
+        Parameters
+        ----------
+        correlation_matrix : ndarray
+            Target correlation matrix of shape (K, K). The Iman-Conover will
+            try to induce a correlation on the data set X so that corr(X) is
+            as close to `correlation_matrix` as possible.
+
+        Examples
+        --------
+        Create a desired correction of 0.7 and a data set X with no correlation.
+        >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
+        >>> rng = np.random.default_rng(4)
+        >>> X = rng.normal(size=(9, 2))
+        >>> float(sp.stats.pearsonr(*X.T).statistic)
+        -0.0255...
+
+        >>> transform = Cholesky(correlation_matrix)
+        >>> X_transformed = transform(X)
+        >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
+        0.7000...
+
+        Verify that mean and std is the same before and after:
+        >>> np.mean(X, axis=0)
+        array([-0.63531692,  0.70114825])
+        >>> np.mean(X_transformed, axis=0)
+        array([-0.63531692,  0.70114825])
+        >>> np.std(X, axis=0)
+        array([1.11972638, 0.75668173])
+        >>> np.std(X_transformed, axis=0)
+        array([1.11972638, 0.75668173])
+
+        """
+        if not isinstance(correlation_matrix, np.ndarray):
+            raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
+        if not correlation_matrix.ndim == 2:
+            raise ValueError("Correlation matrix must be square.")
+        if not correlation_matrix.shape[0] == correlation_matrix.shape[1]:
+            raise ValueError("Correlation matrix must be square.")
+        if not np.allclose(np.diag(correlation_matrix), 1.0):
+            raise ValueError("Correlation matrix must have 1.0 on diagonal.")
+        if not np.allclose(correlation_matrix.T, correlation_matrix):
+            raise ValueError("Correlation matrix must be symmetric.")
+        if not _is_positive_definite(correlation_matrix):
+            raise ValueError("Correlation matrix must be positive definite.")
+
+        self.C = correlation_matrix.copy()
+        self.P = np.linalg.cholesky(self.C)
+
+    def __call__(self, X):
+        """Transform an input matrix X.
+
+        The output will have the same marginal distributions, but with
+        induced correlation.
+
+        Parameters
+        ----------
+        X : ndarray
+            Input matrix of shape (N, K). This is the data set that we want to
+            induce correlation structure on. X must have at least K + 1
+            independent rows, because corr(X) cannot be singular.
+
+        Returns
+        -------
+        ndarray
+            Output matrix of shape (N, K). This data set will have a
+            correlation structure that is more similar to `correlation_matrix`.
+
+        """
+        if not isinstance(X, np.ndarray):
+            raise TypeError("Input argument `X` must be NumPy array.")
+        if not X.ndim == 2:
+            raise ValueError("Correlation matrix must be square.")
+
+        N, K = X.shape
+
+        if self.P.shape[0] != K:
+            msg = f"Shape of `X` ({X.shape}) does not match shape of "
+            msg += f"correlation matrix ({self.P.shape})"
+            raise ValueError(msg)
+
+        # Remove existing mean and std from marginal distributions
+        mean = np.mean(X, axis=0)
+        std = np.std(X, axis=0)
+        X_n = (X - mean) / std
+
+        # Removing existing correlation
+        cov = np.cov(X_n, rowvar=False, ddof=0)
+        P = np.linalg.cholesky(cov)  # P is lower triangular
+
+        # Compute X_n = X_n @ inv(P).T @ self.P.T
+        # Several numerical improvements are available to us here:
+        # (1) Evaluate left-to-right or right-to-left depending on sizes
+        # (2) Do not invert the matrix, instead solve triangular systems
+        # (3) Use LAPACK routine TRMM (scipy.linalg.blas.dtrmm)
+        # I choose to implement (1) and (2), but avoid the LACACK calls for now.
+
+        if N < K:  # Fewer rows (obs) than columns (vars) => left-to-right
+            # Equivalent to: X_n = X_n @ np.linalg.inv(P).T
+            X_n = sp.linalg.solve_triangular(
+                P, X_n.T, lower=True
+            ).T  # Removes existing correlations
+
+            X_n = X_n @ self.P.T  # Adds new desired correlations
+
+        else:  # More rows (obs) than columns (vars) => right-to-left
+            transform = sp.linalg.solve_triangular(
+                P.T, self.P.T, lower=False
+            )  # Remove existing + add desired, as one transformation
+            X_n = X_n @ transform
+
+        return mean + X_n * std
+
+
+class ImanConover(Correlator):
     def __init__(self, correlation_matrix):
         """Create an Iman-Conover transform.
 
@@ -217,6 +339,10 @@ def decorrelate(X, remove_variance=True):
            [0., 1.]])
     >>> np.allclose(np.mean(X, axis=0), np.mean(X_decorr, axis=0))
     True
+    >>> np.var(X, axis=0)
+    array([0.24666667, 0.84666667])
+    >>> np.var(X_decorr, axis=0, ddof=1)
+    array([1., 1.])
 
     >>> X_decorr = decorrelate(X, remove_variance=False)
     >>> np.cov(X_decorr, rowvar=False).round(6)
@@ -226,7 +352,7 @@ def decorrelate(X, remove_variance=True):
     True
     """
     mean = np.mean(X, axis=0)
-    var = np.var(X, axis=0)
+    var = np.var(X, axis=0, ddof=0)
     cov = np.cov(X, rowvar=False)
 
     L = np.linalg.cholesky(cov)  # L @ L.T = cov
