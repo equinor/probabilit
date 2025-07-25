@@ -98,9 +98,6 @@ class Cholesky(Correlator):
     def __call__(self, X):
         """Transform an input matrix X.
 
-        The output will have the same marginal distributions, but with
-        induced correlation.
-
         Parameters
         ----------
         X : ndarray
@@ -125,6 +122,10 @@ class Cholesky(Correlator):
         if self.P.shape[0] != K:
             msg = f"Shape of `X` ({X.shape}) does not match shape of "
             msg += f"correlation matrix ({self.P.shape})"
+            raise ValueError(msg)
+
+        if N <= K:
+            msg = f"The matrix X must have rows > columns. Got shape: {X.shape}"
             raise ValueError(msg)
 
         # Remove existing mean and std from marginal distributions
