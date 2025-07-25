@@ -144,21 +144,11 @@ class Cholesky(Correlator):
         # (3) Use LAPACK routine TRMM (scipy.linalg.blas.dtrmm)
         # I choose to implement (1) and (2), but avoid the LACACK calls for now.
 
-        if N < K:  # Fewer rows (obs) than columns (vars) => left-to-right
-            # Equivalent to: X_n = X_n @ np.linalg.inv(P).T
-            X_n = sp.linalg.solve_triangular(
-                P, X_n.T, lower=True
-            ).T  # Removes existing correlations
-
-            X_n = X_n @ self.P.T  # Adds new desired correlations
-
-        else:  # More rows (obs) than columns (vars) => right-to-left
-            transform = sp.linalg.solve_triangular(
-                P.T, self.P.T, lower=False
-            )  # Remove existing + add desired, as one transformation
-            X_n = X_n @ transform
-
-        return mean + X_n * std
+        # When it comes to evaluation order (point (1) above), it's better to
+        # evaluate left-to-right if N < K, and right-to-left if N > K.
+        # Since N > K (must have rows > columns), we evaluate right-to-left
+        transform = sp.linalg.solve_triangular(P.T, self.P.T, lower=False)
+        return mean + X_n @ (transform * std)
 
 
 class ImanConover(Correlator):
