@@ -96,13 +96,13 @@ class Cholesky(Correlator):
         >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
         >>> rng = np.random.default_rng(4)
         >>> X = rng.normal(size=(9, 2))
-        >>> float(sp.stats.pearsonr(*X.T).statistic)
-        -0.0255...
+        >>> sp.stats.pearsonr(*X.T).statistic.round(6)
+        np.float64(-0.025582)
 
         >>> transform = Cholesky(correlation_matrix)
         >>> X_transformed = transform(X)
-        >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
-        0.7000...
+        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+        np.float64(0.7)
 
         Verify that mean and std is the same before and after:
         >>> np.mean(X, axis=0)
@@ -208,10 +208,10 @@ class ImanConover(Correlator):
         The original data X has no correlation at all, while the transformed
         data has correlation that is closer to the desired correlation structure:
 
-        >>> float(sp.stats.pearsonr(*X.T).statistic)
-        0.0
-        >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
-        0.816496...
+        >>> sp.stats.pearsonr(*X.T).statistic.round(6)
+        np.float64(0.0)
+        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+        np.float64(0.816497)
 
         Achieving the exact correlation structure might be impossible. For the
         input matrix above, there is no permutation of the columns that yields
@@ -223,8 +223,8 @@ class ImanConover(Correlator):
         >>> rng = np.random.default_rng(42)
         >>> X = rng.normal(size=(1000, 2))
         >>> X_transformed = transform(X)
-        >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
-        0.697701...
+        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+        np.float64(0.697701)
 
         But if the data are far from normal (here:lognormal), the results are
         not as good. This is because correlation is induced in a normal space
@@ -233,8 +233,8 @@ class ImanConover(Correlator):
         >>> rng = np.random.default_rng(42)
         >>> X = rng.lognormal(size=(1000, 2))
         >>> X_transformed = transform(X)
-        >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
-        0.592541...
+        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+        np.float64(0.592541)
         """
         super().__init__(correlation_matrix)
 
