@@ -350,6 +350,6 @@ def decorrelate(X, remove_variance=True):
 
 
 if __name__ == "__main__":
-    import doctest
+    import pytest
 
-    doctest.testmod()
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
