@@ -170,8 +170,7 @@ import abc
 import itertools
 import networkx as nx
 from scipy._lib._util import check_random_state
-from probabilit.iman_conover import ImanConover
-from probabilit.correlation import nearest_correlation_matrix
+from probabilit.correlation import nearest_correlation_matrix, ImanConover
 from probabilit.utils import build_corrmat, zip_args
 import copy
 

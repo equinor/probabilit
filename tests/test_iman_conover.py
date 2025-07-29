@@ -3,7 +3,7 @@ import pytest
 import scipy as sp
 from scipy.stats import spearmanr
 
-from probabilit.iman_conover import ImanConover, decorrelate
+from probabilit.correlation import ImanConover, decorrelate
 
 
 @pytest.fixture
