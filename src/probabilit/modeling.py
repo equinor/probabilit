@@ -3,12 +3,12 @@ Modeling
 --------
 
 Probabilit lets the user perform Monte-Carlo sampling using a high-level
-modeling language.
-The modeling language creates a lazy computational graph.
-When a node is sampled, all ancestor nodes are sampled in turn and the samples are propagated down in the graph, from parent nodes to child nodes.
+modeling language. The modeling language creates a lazy computational graph.
+When a node is sampled, all ancestor nodes are sampled in turn and samples are
+propagated down in the graph, from parent nodes to child nodes.
 
 For instance, to compute the shipping cost of a box where we are uncertain
-about the measurements:
+about the measurements, we can write:
 
 >>> rng = np.random.default_rng(42)
 >>> box_height = Distribution("norm", loc=0.5, scale=0.01)
@@ -23,7 +23,8 @@ about the measurements:
 
 Distributions are built on top of scipy, so "norm" refers to the name of the
 normal distribution as given in `scipy.stats`, and the arguments to the
-distribution must also match those given by `scipy.stats.norm`.
+distribution must match those given by `scipy.stats.norm` (here `loc` and
+`scale`).
 
 Here is another example demonstrating composite distributions, where an
 argument to one distribution is another distribution:
@@ -36,8 +37,8 @@ array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
 
 To understand and examine the modeling language, we can perform  computations
 using constants. The computational graph carries out arithmetic operations
-when the model is sampled. Mixing numbers with nodes is allowed, but at least one
-expression or term must be a probabilit class instance:
+when the model is sampled. Mixing numbers with nodes is allowed, but at least
+one expression or term must be a probabilit class instance:
 
 >>> a = Constant(1)
 >>> (a * 3 + 5).sample(5, random_state=rng)
@@ -51,7 +52,7 @@ Let us build a more compliated expression:
 >>> b = Distribution("expon", scale=1)
 >>> expression = a**b + a * b + 5 * b
 
-Every unique node in this expression can be found:
+Every unique node in this expression can be found by calling `.nodes()`:
 
 >>> for node in set(expression.nodes()):
 ...     print(node)
@@ -64,7 +65,7 @@ Constant(5)
 Multiply(Distribution("expon", scale=1), Constant(5))
 Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))), Multiply(Distribution("expon", scale=1), Constant(5)))
 
-Sampling the expression is simple:
+Sampling the expression is simple by using `.sample()`:
 
 >>> expression.sample(5, random_state=rng)
 array([ 2.70764145, 36.58578812,  7.07064239,  1.84433247,  3.90951632])
@@ -85,11 +86,11 @@ Here is an even more complex expression:
 array([ 4.70542018, 14.43250192,  6.74494838, -0.14020459, -3.27334554])
 
 Nodes are hashable and can be used in sets, so __hash__ and __eq__ must both
-be defined. We cannot use `==` for modeling since equality in that context has
-another meaning. Use the Equal node instead. This is only relevant in cases
-when equality is part of a model. For real-valued distribution (e.g. Normal)
-equality does not make sense since the probability that two floats are equal
-is zero.
+be defined. Therefore we cannot use `==` for modeling; equality in that context
+has another meaning. Use the Equal node instead. This is only relevant in cases
+when equality operators is part of a model. For real-valued distribution
+(e.g. Normal) equality does not make sense since the probability that two
+floats are equal is zero.
 
 >>> dice1 = Distribution("uniform", loc=1, scale=6) // 1
 >>> dice2 = Distribution("uniform", loc=1, scale=6) // 1
@@ -98,13 +99,14 @@ is zero.
 0.166...
 
 Empirical distributions may also be used. They wrap np.quantile and take the
-same arguments. For instance, to sample from a dice:
+same arguments. For instance, to sample from a dice use `closest_observation`:
 
 >>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
 >>> dice.sample(9, random_state=42)
 array([2, 6, 4, 4, 1, 1, 1, 5, 4])
 
-To sample from a non-parametric distribution defined by the data:
+To sample from a non-parametric distribution defined by the data, similarily
+to a kernel density estimate:
 
 >>> cost = EmpiricalDistribution([200, 200, 300, 250, 225])
 >>> cost.sample(9, random_state=42)
@@ -123,7 +125,7 @@ sampling, pass the `method` argument into `.sample()`.
 >>> float(dice.sample(9, random_state=1, method=None).mean())
 1.888...
 
-To retain more control, use the `sample_from_quantiles` method instead:
+To retain more control, use the `sample_from_quantiles` method directly instead:
 
 >>> from scipy.stats.qmc import LatinHypercube
 >>> d = expression.num_distribution_nodes()
@@ -191,9 +193,9 @@ def python_to_prob(argument):
 # =============================================================================
 #
 # There are three main types of Node instances, they are:
-#   - Constant:     numbers like 2 or 5.5, which are always source nodes
-#   - Distribution: typically source nodes, but can be non-source if composite
-#   - Transform:    arithmetic operations like + or **, or general functions
+#   - Constant:      numbers like 2 or 5.5, which are always source nodes
+#   - Distribution:  typically source nodes, but can be non-source if composite
+#   - Transform:     arithmetic operations like + or **, or general functions
 #
 # |              | source node | non-source node |
 # |--------------|-------------|-----------------|
@@ -249,6 +251,7 @@ class Node(abc.ABC):
         self._correlations = []
 
     def __eq__(self, other):
+        # Needed for set() to work on Node. Equality in models must use Equal()
         return self._id == other._id
 
     def __hash__(self):
@@ -327,30 +330,39 @@ class Node(abc.ABC):
             queue.extend(node.get_parents())
 
     def num_distribution_nodes(self):
+        """Number of unique ancestor nodes that are distribution nodes."""
         return sum(
             1 for node in set(self.nodes()) if isinstance(node, AbstractDistribution)
         )
 
     def sample(self, size=None, random_state=None, method=None):
-        """Sample the current node and assign to all node.samples_."""
+        """Sample the current node and assign to all node.samples_.
+
+        Examples
+        --------
+        >>> result = 2 * Distribution("expon", scale=1/3)
+        >>> result.sample(random_state=0)
+        array([0.53058301])
+        >>> result.sample(size=5, random_state=0)
+        array([0.53058301, 0.83728718, 0.6154821 , 0.52480077, 0.36736566])
+        >>> result.sample(size=5, random_state=0, method="lhs")
+        array([1.11212876, 0.273718  , 0.03808862, 0.5702549 , 0.83779147])
+        """
         size = 1 if size is None else size
         d = self.num_distribution_nodes()
 
-        # Draw a quantiles of random variables in [0, 1]
-        if method is None:
+        # Draw a quantiles of random variables in [0, 1] using a method
+        methods = {
+            "lhs": sp.stats.qmc.LatinHypercube,
+            "halton": sp.stats.qmc.Halton,
+            "sobol": sp.stats.qmc.Sobol,
+        }
+        if method is None:  # Pseudo-random sampling
             random_state = check_random_state(random_state)
             quantiles = random_state.random((size, d))
-        elif method.lower().strip() == "lhs":
-            lhs = sp.stats.qmc.LatinHypercube(d=d, rng=random_state)
-            quantiles = lhs.random(n=size)
-        elif method.lower().strip() == "halton":
-            halton = sp.stats.qmc.Halton(d=d, rng=random_state)
-            quantiles = halton.random(n=size)
-        elif method.lower().strip() == "sobol":
-            sobol = sp.stats.qmc.Sobol(d=d, rng=random_state)
-            quantiles = sobol.random(n=size)
-        else:
-            raise ValueError(f"Invalid method: {method}")
+        else:  # Quasi-random sampling
+            sampler = methods[method.lower().strip()](d=d, rng=random_state)
+            quantiles = sampler.random(n=size)
 
         return self.sample_from_quantiles(quantiles)
 
@@ -376,16 +388,16 @@ class Node(abc.ABC):
         # Ensure consistent ordering for reproducible results
         initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
 
-        # Loop over all initial sampling nodes
+        # Loop over all initial sampling nodes (ISN) and sample them
         G = self.to_graph()
         for node in initial_sampling_nodes:
-            # Sample all ancestors
+            # Sample all ancestors of ISNs
             ancestors = G.subgraph(nx.ancestors(G, node))
             for ancestor in nx.topological_sort(ancestors):
                 assert isinstance(ancestor, (Constant, AbstractDistribution))
                 ancestor.samples_ = ancestor._sample(size=size)
 
-            # Sample the node
+            # Sample the ISN
             assert isinstance(node, AbstractDistribution)
             node.samples_ = node._sample(q=next(columns))
 
@@ -409,7 +421,7 @@ class Node(abc.ABC):
             if len(common) > 1:
                 raise ValueError(f"Correlations specified more than once: {common}")
 
-        # Map all variables to integers
+        # Map all variables to integers to associate them with a column
         all_variables = list(functools.reduce(set.union, variable_sets, set()))
         # Ensure consistent ordering for reproducible results
         all_variables = sorted(all_variables, key=lambda n: n._id)
@@ -425,6 +437,7 @@ class Node(abc.ABC):
             correlation_matrix = build_corrmat(correlations)
             correlation_matrix = nearest_correlation_matrix(correlation_matrix)
 
+            # TODO: allow other correlators in additon to ImanConover
             iman_conover = ImanConover(correlation_matrix)
 
             # Concatenate samples, correlate them (shift rows in each col), then re-assign
@@ -461,11 +474,11 @@ class Node(abc.ABC):
         return is_distribution and not ancestors_distr
 
     def correlate(self, *variables, corr_mat):
-        """Impose correlations on variables.
+        """Store correlations on variables.
 
         When `.correlate(*variables)` is called on a node, the variables must
         be ancestors of that node. The order of the variables should match the
-        order of the rows/columns in the correlation matrix.s
+        order of the rows/columns in the correlation matrix.
 
         Examples
         --------
@@ -575,10 +588,9 @@ class OverloadMixin:
     def __ge__(self, other):
         return GreaterThanOrEqual(self, other)
 
-    # TODO: __eq__ (==) and __ne__ (!=) are not implemented here (yet),
-    # because they are also used in set(nodes), which relies upon
-    # both equality checks and __hash__. We should probably remove all usage
-    # of set() within methods like  sample(), to free up == and != for modeling.
+    # TODO: __eq__ (==) and __ne__ (!=) are not implemented here,
+    # because they are used in set(nodes), which relies upon
+    # both equality checks and __hash__.
 
 
 class Constant(Node, OverloadMixin):
@@ -668,7 +680,7 @@ class EmpiricalDistribution(AbstractDistribution):
         return np.quantile(a=self.data, q=q, **self.kwargs)
 
     def get_parents(self):
-        return []  # A Constant does not have any parents
+        return []  # A EmpiricalDistribution does not have any parents
 
 
 # ========================================================
@@ -729,6 +741,7 @@ class Any(VariadicTransform):
 
 class Avg(VariadicTransform):
     def _sample(self, size=None):
+        # Avg(a, Avg(b, c)) !=  Avg(Avg(a, b), c), so we override _sample()
         samples = tuple(parent.samples_ for parent in self.parents)
         return np.average(np.vstack(samples), axis=0)
 
@@ -773,19 +786,19 @@ class Equal(BinaryTransform):
 
 
 class LessThan(BinaryTransform):
-    op = operator.lt  # <
+    op = operator.lt
 
 
 class LessThanOrEqual(BinaryTransform):
-    op = operator.le  # <=
+    op = operator.le
 
 
 class GreaterThan(BinaryTransform):
-    op = operator.gt  # >
+    op = operator.gt
 
 
 class GreaterThanOrEqual(BinaryTransform):
-    op = operator.ge  # >=
+    op = operator.ge
 
 
 class UnaryTransform(Transform):
