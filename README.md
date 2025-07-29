@@ -109,7 +109,7 @@ There's not guarantee that we're able to achieve the desired correlation structu
 
 ```pycon
 >>> import scipy as sp
->>> from probabilit.iman_conover import ImanConover
+>>> from probabilit.correlation import ImanConover
 >>> sampler = sp.stats.qmc.LatinHypercube(d=2, seed=42, scramble=True)
 >>> samples = sampler.random(n=100)
 >>> X = np.vstack((sp.stats.triang(0.5).ppf(samples[:, 0]),
