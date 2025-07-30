@@ -8,11 +8,11 @@ def Triangular(p10, mode, p90):
     return Distribution("triang", loc=..., scale=..., c=...)."""
     from probabilit.modeling import Distribution  # Avoid circular imports
 
-    # if not (p10 < mode < p90):
-    #    raise ValueError(f"Must have {p10=} < {mode=} < {p90=}")
+    if not (p10 < mode < p90):
+        raise ValueError(f"Must have {p10=} < {mode=} < {p90=}")
 
     # Optimize parameters
-    loc, scale, c = _triang_params_from_perc(p10, mode, p90)
+    loc, scale, c = _triang_params_from_perc(p10=p10, mode=mode, p90=p90)
     return Distribution("triang", loc=loc, scale=scale, c=c)
 
 
@@ -32,6 +32,7 @@ def _triang_params_from_perc(p10, mode, p90):
     >>> math.isclose(c, 0.85, rel_tol=0.001)
     True
     """
+    assert p10 < mode < p90
 
     # Shift and scale inputs before solving optimization problem
     spread = p90 - p10
@@ -44,7 +45,7 @@ def _triang_params_from_perc(p10, mode, p90):
     # in terms of (loc, scale, c). This cannot be solved analytically.
     desired = np.array([p10, mode, p90])
 
-    # Initial guesses for optimization
+    # Initial guess
     loc_initial = p10
     scale_initial = np.log(p90 - p10)
     c_initial = sp.special.logit((mode - p10) / (p90 - p10))
@@ -55,12 +56,10 @@ def _triang_params_from_perc(p10, mode, p90):
         _triang_objective, x0=x0, args=(desired,), method="BFGS"
     )
 
-    # assert result.success
-    # Issues can arise if e.g. (p10=-2, mode=2, p90=2), since there is no
-    # triangular distributions that match these criteria. In general the mode
-    # must be sufficiently between p10 and p90. Determining this beforehand
+    assert result.fun < 1e-2
+    # Issues can arise. Determining this beforehand
     # is hard, so we simply try to optimize and see if we get close.
-    if result.fun > 1e-2:
+    if result.fun > 1e-4:
         warnings.warn(f"Optimization of triangular params did not converge:\n{result}")
 
     # Extract parameters
@@ -103,7 +102,7 @@ def _triang_objective(parameters, desired):
 
     loc, scale, c = parameters
     scale = np.exp(scale)  # Scale must be positive
-    c = sp.special.expit(c)  # C must be between 0 and 1
+    c = np.clip(sp.special.expit(c), 0, 1)  # C must be between 0 and 1
 
     # Create distribution
     triangular = sp.stats.triang(loc=loc, scale=scale, c=c)
@@ -119,33 +118,7 @@ def _triang_objective(parameters, desired):
     return np.sqrt(np.sum((desired - actual) ** 2))
 
 
-# ========================================================
 if __name__ == "__main__":
     import pytest
 
     pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
-
-    # 0.3977688370411745 0.12620833534058773 0.8084622980757837
-    # 0.6246170152336684 0.7165879070002568 0.9288370744653666
-
-    for _ in range(99):
-        print("---------------------")
-        loc = np.random.rand()
-        scale = np.random.rand()
-        c = np.random.rand() * 0.5 + 0.25
-
-        print(loc, scale, c)
-
-        from scipy.stats import triang
-
-        dist = triang(loc=loc, scale=scale, c=c)
-        print(_triang_extract(dist))
-        opt_loc, opt_scale, opt_c = _triang_params_from_perc(*_triang_extract(dist))
-
-        assert abs(loc - opt_loc) <= 0.01
-        assert abs(scale - opt_scale) <= 0.01
-        assert abs(c - opt_c) <= 0.01
-
-        print(loc, opt_loc)
-        print(scale, opt_scale)
-        print(c, opt_c)
