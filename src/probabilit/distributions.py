@@ -115,7 +115,7 @@ def _triang_objective(parameters, desired):
         return 1e3
 
     # RMSE
-    return np.sqrt(np.sum((desired - actual) ** 2))
+    return np.sqrt(np.sum((desired - actual) ** 2)) / scale
 
 
 if __name__ == "__main__":
