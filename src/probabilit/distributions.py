@@ -1,12 +1,25 @@
 import scipy as sp
 import numpy as np
 import warnings
+from probabilit.modeling import Distribution
+
+
+def Normal(loc, scale):
+    return Distribution("norm", loc=loc, scale=scale)
 
 
 def Triangular(p10, mode, p90):
     """Find optimal scipy parametrization given (p10, mode, p90) and
-    return Distribution("triang", loc=..., scale=..., c=...)."""
-    from probabilit.modeling import Distribution  # Avoid circular imports
+    return Distribution("triang", loc=..., scale=..., c=...).
+
+    This distribution does *not* work with composite distributions.
+    The arguments must be numbers, they cannot be other distributions.
+
+    Examples
+    --------
+    >>> Triangular(p10=1, mode=5, p90=9)
+    Distribution("triang", loc=-2.236068061140598, scale=14.472136057963969, c=0.5000000024295282)
+    """
 
     if not (p10 < mode < p90):
         raise ValueError(f"Must have {p10=} < {mode=} < {p90=}")
