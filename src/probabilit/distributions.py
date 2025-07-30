@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Jul 30 12:07:11 2025
-
-@author: TODL
-"""
-
 import scipy as sp
 import numpy as np
 import warnings
