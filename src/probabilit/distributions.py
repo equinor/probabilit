@@ -8,6 +8,22 @@ def Normal(loc, scale):
     return Distribution("norm", loc=loc, scale=scale)
 
 
+def PERT(minimum, mode, maximum, gamma=4.0):
+    """Returns a Beta distribution, parameterized by the PERT parameters.
+
+    A high gamma value means a more concentrated distribution.
+
+    Examples
+    --------
+    >>> PERT(0, 6, 10)
+    Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
+    >>> PERT(0, 6, 10, gamma=10)
+    Distribution("beta", a=7.0, b=5.0, loc=0, scale=10)
+    """
+    a, b, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma=gamma)
+    return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
+
+
 def Triangular(p10, mode, p90):
     """Find optimal scipy parametrization given (p10, mode, p90) and
     return Distribution("triang", loc=..., scale=..., c=...).
@@ -129,6 +145,37 @@ def _triang_objective(parameters, desired):
 
     # RMSE
     return np.sqrt(np.sum((desired - actual) ** 2)) / scale
+
+
+def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
+    """Convert the PERT parametrization to a beta distribution.
+
+    Returns (a, b, loc, scale).
+
+    Examples
+    --------
+    >>> _pert_to_beta(0, 3/4, 1)
+    (4.0, 2.0, 0, 1)
+    >>> _pert_to_beta(0, 30/4, 10)
+    (4.0, 2.0, 0, 10)
+    >>> _pert_to_beta(0, 9, 10, gamma=6)
+    (6.4, 1.6, 0, 10)
+    """
+    # https://en.wikipedia.org/wiki/PERT_distribution
+    if not (minimum < mode < maximum):
+        raise ValueError(f"Must have {minimum=} < {mode=} < {maximum=}")
+    if gamma <= 0:
+        raise ValueError(f"Gamma must be positive, got {gamma=}")
+
+    # Determine location and scale
+    loc = minimum
+    scale = maximum - minimum
+
+    # Determine a and b
+    a = 1 + gamma * (mode - minimum) / scale
+    b = 1 + gamma * (maximum - mode) / scale
+
+    return (a, b, loc, scale)
 
 
 if __name__ == "__main__":
