@@ -131,7 +131,7 @@ def _triang_extract(triangular):
 
 
 def _triang_objective(parameters, desired):
-    """Pass parameters (loc, log(scale), logit(scale)) into sp.stats.triang
+    """Pass parameters (loc, log(scale), logit(c)) into sp.stats.triang
     and return the RMSE between actual and desired (p10, mode, p90)."""
 
     loc, scale, c = parameters
