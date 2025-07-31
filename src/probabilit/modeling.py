@@ -3,10 +3,12 @@ Modeling
 --------
 
 Probabilit lets the user perform Monte-Carlo sampling using a high-level
-modeling language, which creates a computational graph.
+modeling language. The modeling language creates a lazy computational graph.
+When a node is sampled, all ancestor nodes are sampled in turn and samples are
+propagated down in the graph, from parent nodes to child nodes.
 
 For instance, to compute the shipping cost of a box where we are uncertain
-about the measurements:
+about the measurements, we can write:
 
 >>> rng = np.random.default_rng(42)
 >>> box_height = Distribution("norm", loc=0.5, scale=0.01)
@@ -20,11 +22,12 @@ about the measurements:
 20.00139737515...
 
 Distributions are built on top of scipy, so "norm" refers to the name of the
-normal distribution as given in `scipy.stats`, and the arguments to the distribution
-must also match those given by `scipy.stats.norm`.
+normal distribution as given in `scipy.stats`, and the arguments to the
+distribution must match those given by `scipy.stats.norm` (here `loc` and
+`scale`).
 
-Here is another example showing composite distributions, where the argument
-to one distribution is another distribution:
+Here is another example demonstrating composite distributions, where an
+argument to one distribution is another distribution:
 
 >>> eggs_per_nest = Distribution("poisson", mu=3)
 >>> survivial_prob = Distribution("beta", a=10, b=15)
@@ -32,10 +35,10 @@ to one distribution is another distribution:
 >>> survived.sample(9, random_state=rng)
 array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
 
-To understand and examine the modeling language, we can do some computations
-with constants. The computational graph carries out arithmetic operations lazily
-once a model is sampled. Mixing numbers with nodes is allowed, but at least one
-expression or term must be a probabilit class instance:
+To understand and examine the modeling language, we can perform  computations
+using constants. The computational graph carries out arithmetic operations
+when the model is sampled. Mixing numbers with nodes is allowed, but at least
+one expression or term must be a probabilit class instance:
 
 >>> a = Constant(1)
 >>> (a * 3 + 5).sample(5, random_state=rng)
@@ -49,7 +52,7 @@ Let us build a more compliated expression:
 >>> b = Distribution("expon", scale=1)
 >>> expression = a**b + a * b + 5 * b
 
-Every unique node in this expression can be found:
+Every unique node in this expression can be found by calling `.nodes()`:
 
 >>> for node in set(expression.nodes()):
 ...     print(node)
@@ -62,7 +65,7 @@ Constant(5)
 Multiply(Distribution("expon", scale=1), Constant(5))
 Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))), Multiply(Distribution("expon", scale=1), Constant(5)))
 
-Sampling the expression is simple enough:
+Sampling the expression is simple by using `.sample()`:
 
 >>> expression.sample(5, random_state=rng)
 array([ 2.70764145, 36.58578812,  7.07064239,  1.84433247,  3.90951632])
@@ -73,15 +76,6 @@ Sampling the expression has the side effect that `.samples_` is populated on
 >>> a.samples_
 array([4.51589278, 4.37788659, 5.25960812, 5.80609507, 4.33770499])
 
-To sample using e.g. Latin Hypercube, do the following:
-
->>> from scipy.stats.qmc import LatinHypercube
->>> d = expression.get_number_of_distribution_nodes()
->>> hypercube = LatinHypercube(d=d, rng=rng)
->>> hypercube_samples = hypercube.random(5) # Draw 5 samples
->>> expression.sample_from_cube(hypercube_samples)
-array([ 1.20438726, 12.40283222,  5.02130766, 16.45109076, 77.12874028])
-
 Here is an even more complex expression:
 
 >>> a = Distribution("norm", loc=0, scale=1)
@@ -90,6 +84,55 @@ Here is an even more complex expression:
 >>> expression = a*a - Add(a, b, c) + Abs(b)**Abs(c) + Exp(1 / Abs(c))
 >>> expression.sample(5, random_state=rng)
 array([ 4.70542018, 14.43250192,  6.74494838, -0.14020459, -3.27334554])
+
+Nodes are hashable and can be used in sets, so __hash__ and __eq__ must both
+be defined. Therefore we cannot use `==` for modeling; equality in that context
+has another meaning. Use the Equal node instead. This is only relevant in cases
+when equality operators is part of a model. For real-valued distribution
+(e.g. Normal) equality does not make sense since the probability that two
+floats are equal is zero.
+
+>>> dice1 = Distribution("uniform", loc=1, scale=6) // 1
+>>> dice2 = Distribution("uniform", loc=1, scale=6) // 1
+>>> equal_result = Equal(dice1, dice2)
+>>> float(equal_result.sample(999, random_state=42).mean())
+0.166...
+
+Empirical distributions may also be used. They wrap np.quantile and take the
+same arguments. For instance, to sample from a dice use `closest_observation`:
+
+>>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
+>>> dice.sample(9, random_state=42)
+array([2, 6, 4, 4, 1, 1, 1, 5, 4])
+
+To sample from a non-parametric distribution defined by the data, similarily
+to a kernel density estimate:
+
+>>> cost = EmpiricalDistribution([200, 200, 300, 250, 225])
+>>> cost.sample(9, random_state=42)
+array([212.45401188, 290.14286128, 248.19939418, 234.86584842,
+       200.        , 200.        , 200.        , 273.23522915,
+       235.11150117])
+
+Samplers
+--------
+The default sampling uses pseudo-random numbers. To use e.g. latin hybercube
+sampling, pass the `method` argument into `.sample()`.
+
+>>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
+>>> float(dice.sample(9, random_state=1, method="lhs").mean())
+3.222...
+>>> float(dice.sample(9, random_state=1, method=None).mean())
+1.888...
+
+To retain more control, use the `sample_from_quantiles` method directly instead:
+
+>>> from scipy.stats.qmc import LatinHypercube
+>>> d = expression.num_distribution_nodes()
+>>> hypercube = LatinHypercube(d=d, rng=rng, optimization="random-cd")
+>>> hypercube_samples = hypercube.random(5) # Draw 5 samples
+>>> expression.sample_from_quantiles(hypercube_samples)
+array([ 7.80785741,  3.72416016,  3.77849849, -3.83561905, 38.02479019])
 
 Functions
 ---------
@@ -109,7 +152,7 @@ Now we can create a computational graph:
 
 >>> a = Distribution("norm", loc=0, scale=1)
 >>> b = Distribution("norm", loc=0, scale=2)
->>> expression = function(a, b) # Function is not actually called here
+>>> expression = function(a, b) # Function is not actually evaluated here
 
 Now sample 'through' the function:
 
@@ -120,65 +163,21 @@ array([0.        , 0.        , 0.45555522, 0.        , 0.        ])
 import operator
 import functools
 import numpy as np
+import scipy as sp
 import numbers
 from scipy import stats
 import abc
 import itertools
 import networkx as nx
 from scipy._lib._util import check_random_state
-from probabilit.iman_conover import ImanConover
-from probabilit.correlation import nearest_correlation_matrix
+from probabilit.correlation import nearest_correlation_matrix, ImanConover
+from probabilit.utils import build_corrmat, zip_args
 import copy
 
 
 # =============================================================================
 # FUNCTIONS
 # =============================================================================
-
-
-def zip_args(args, kwargs):
-    """Zip argument and keyword arguments for repeated function calls.
-
-    Examples
-    --------
-    >>> args = ((1, 2, 3), itertools.repeat(None))
-    >>> kwargs = {"a": (5, 6, 7), "b": itertools.repeat(9)}
-    >>> for args_i, kwargs_i in zip_args(args, kwargs):
-    ...     print(args_i, kwargs_i)
-    (1, None) {'a': 5, 'b': 9}
-    (2, None) {'a': 6, 'b': 9}
-    (3, None) {'a': 7, 'b': 9}
-    """
-    zipped_args = zip(*args) if args else itertools.repeat(args)
-    zipped_kwargs = zip(*kwargs.values()) if kwargs else itertools.repeat(kwargs)
-
-    for args_i, kwargs_i in zip(zipped_args, zipped_kwargs):
-        yield args_i, dict(zip(kwargs.keys(), kwargs_i))
-
-
-def build_corrmat(correlations):
-    """Given a list of [(indices1, corrmat1), (indices2, corrmat2), ...],
-    create a big correlation matrix.
-
-    Examples
-    --------
-    >>> correlations = [((0, 2), np.array([[1, 0.5], [0.5, 1]]))]
-    >>> build_corrmat(correlations)
-    array([[1. , 0. , 0.5],
-           [0. , 1. , 0. ],
-           [0.5, 0. , 1. ]])
-    """
-    # TODO: If no correlation is given, we implicitly assume zero.
-    # For instance, if no correlation between indices (0, 3) is given
-    # in the input data, then C[0, 3] = C[3, 0] = 0.0, which is strictly
-    # speaking not the same (no preference vs. preference for 0 corr)
-    n = max(max(idx) for (idx, _) in correlations)
-    C = np.eye(n + 1, dtype=float)
-
-    for idx_i, corrmat_i in correlations:
-        C[np.ix_(idx_i, idx_i)] = corrmat_i
-
-    return C
 
 
 def python_to_prob(argument):
@@ -193,9 +192,9 @@ def python_to_prob(argument):
 # =============================================================================
 #
 # There are three main types of Node instances, they are:
-#   - Constant:     numbers like 2 or 5.5, which are always source nodes
-#   - Distribution: typically source nodes, but can be non-source if composite
-#   - Transform:    arithmetic operations like + or **, or general functions
+#   - Constant:      numbers like 2 or 5.5, which are always source nodes
+#   - Distribution:  typically source nodes, but can be non-source if composite
+#   - Transform:     arithmetic operations like + or **, or general functions
 #
 # |              | source node | non-source node |
 # |--------------|-------------|-----------------|
@@ -251,6 +250,7 @@ class Node(abc.ABC):
         self._correlations = []
 
     def __eq__(self, other):
+        # Needed for set() to work on Node. Equality in models must use Equal()
         return self._id == other._id
 
     def __hash__(self):
@@ -295,7 +295,7 @@ class Node(abc.ABC):
 
             # Now that the node has been updated, update references to parents
             # to point to Nodes in the new copied graph instead of the old one.
-            if isinstance(copied, (Distribution, ScalarFunctionTransform)):
+            if isinstance(copied, (AbstractDistribution, ScalarFunctionTransform)):
                 copied.args = tuple(update(arg) for arg in copied.args)
                 copied.kwargs = {k: update(v) for (k, v) in copied.kwargs.items()}
             elif isinstance(copied, (VariadicTransform, BinaryTransform)):
@@ -328,28 +328,52 @@ class Node(abc.ABC):
             yield (node := queue.pop())
             queue.extend(node.get_parents())
 
-    def get_number_of_distribution_nodes(self):
-        return sum(1 for node in set(self.nodes()) if isinstance(node, Distribution))
+    def num_distribution_nodes(self):
+        """Number of unique ancestor nodes that are distribution nodes."""
+        return sum(
+            1 for node in set(self.nodes()) if isinstance(node, AbstractDistribution)
+        )
 
-    def sample(self, size=None, random_state=None):
-        """Sample the current node and assign to all node.samples_."""
+    def sample(self, size=None, random_state=None, method=None):
+        """Sample the current node and assign to all node.samples_.
+
+        Examples
+        --------
+        >>> result = 2 * Distribution("expon", scale=1/3)
+        >>> result.sample(random_state=0)
+        array([0.53058301])
+        >>> result.sample(size=5, random_state=0)
+        array([0.53058301, 0.83728718, 0.6154821 , 0.52480077, 0.36736566])
+        >>> result.sample(size=5, random_state=0, method="lhs")
+        array([1.11212876, 0.273718  , 0.03808862, 0.5702549 , 0.83779147])
+        """
         size = 1 if size is None else size
-        random_state = check_random_state(random_state)
+        d = self.num_distribution_nodes()
 
-        # Draw a cube of random variables in [0, 1]
-        cube = random_state.random((size, self.get_number_of_distribution_nodes()))
+        # Draw a quantiles of random variables in [0, 1] using a method
+        methods = {
+            "lhs": sp.stats.qmc.LatinHypercube,
+            "halton": sp.stats.qmc.Halton,
+            "sobol": sp.stats.qmc.Sobol,
+        }
+        if method is None:  # Pseudo-random sampling
+            random_state = check_random_state(random_state)
+            quantiles = random_state.random((size, d))
+        else:  # Quasi-random sampling
+            sampler = methods[method.lower().strip()](d=d, rng=random_state)
+            quantiles = sampler.random(n=size)
 
-        return self.sample_from_cube(cube)
+        return self.sample_from_quantiles(quantiles)
 
-    def sample_from_cube(self, cube):
-        """Use samples from a cube of quantiles in [0, 1] to sample all
-        distributions. The cube must have shape (dimensionality, num_samples)."""
+    def sample_from_quantiles(self, quantiles):
+        """Use samples from an array of quantiles in [0, 1] to sample all
+        distributions. The array must have shape (dimensionality, num_samples)."""
         assert nx.is_directed_acyclic_graph(self.to_graph())
-        size, n_dim = cube.shape
-        assert n_dim == self.get_number_of_distribution_nodes()
+        size, n_dim = quantiles.shape
+        assert n_dim == self.num_distribution_nodes()
 
         # Prepare columns of quantiles, one column for each Distribution
-        columns = iter(list(cube.T))
+        columns = iter(list(quantiles.T))
 
         # Clear any samples that might exist in the graph
         for node in set(self.nodes()):
@@ -363,20 +387,21 @@ class Node(abc.ABC):
         # Ensure consistent ordering for reproducible results
         initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
 
-        # Loop over all initial sampling nodes
+        # Loop over all initial sampling nodes (ISN) and sample them
         G = self.to_graph()
         for node in initial_sampling_nodes:
-            # Sample all ancestors
+            # Sample all ancestors of ISNs
             ancestors = G.subgraph(nx.ancestors(G, node))
             for ancestor in nx.topological_sort(ancestors):
-                assert isinstance(ancestor, (Constant, Distribution))
+                assert isinstance(ancestor, (Constant, AbstractDistribution))
                 ancestor.samples_ = ancestor._sample(size=size)
 
-            # Sample the node
-            assert isinstance(node, Distribution)
+            # Sample the ISN
+            assert isinstance(node, AbstractDistribution)
             node.samples_ = node._sample(q=next(columns))
 
         # Go through all ancestor nodes and create a list [(var, corr), ...]
+        # that contains all correlations we must induce
         correlations = []
         for node in set(self.nodes()):
             if hasattr(node, "_correlations"):
@@ -386,17 +411,19 @@ class Node(abc.ABC):
         for variables, _ in correlations:
             for variable in variables:
                 if variable not in initial_sampling_nodes:
-                    raise ValueError("Cannot correlate variable: {variable}")
+                    raise ValueError(f"Cannot correlate variable: {variable}")
 
         # Check that no correlation has been specified twice
         variable_sets = [set(variables) for (variables, _) in correlations]
         for vars1, vars2 in itertools.combinations(variable_sets, 2):
             common = vars1.intersection(vars2)
             if len(common) > 1:
-                raise ValueError("Correlations specified more than once: {common}")
+                raise ValueError(f"Correlations specified more than once: {common}")
 
-        # Map all variables to integers
+        # Map all variables to integers to associate them with a column
         all_variables = list(functools.reduce(set.union, variable_sets, set()))
+        # Ensure consistent ordering for reproducible results
+        all_variables = sorted(all_variables, key=lambda n: n._id)
         var_to_int = {v: i for (i, v) in enumerate(all_variables)}
         correlations = [
             (tuple(var_to_int[var] for var in variables), corrmat)
@@ -409,6 +436,7 @@ class Node(abc.ABC):
             correlation_matrix = build_corrmat(correlations)
             correlation_matrix = nearest_correlation_matrix(correlation_matrix)
 
+            # TODO: allow other correlators in additon to ImanConover
             iman_conover = ImanConover(correlation_matrix)
 
             # Concatenate samples, correlate them (shift rows in each col), then re-assign
@@ -423,7 +451,7 @@ class Node(abc.ABC):
                 continue
             elif isinstance(node, Constant):
                 node.samples_ = node._sample(size=size)
-            elif isinstance(node, Distribution):
+            elif isinstance(node, AbstractDistribution):
                 node.samples_ = node._sample(q=next(columns))
             elif isinstance(node, (Transform, MarginalDistribution)):
                 node.samples_ = node._sample()
@@ -436,17 +464,20 @@ class Node(abc.ABC):
         """A node is an initial sample node iff:
         (1) It is a Distribution
         (2) None of its ancestors are Distributions (all are Constant/Transform)"""
-        is_distribution = isinstance(self, Distribution)
+
+        is_distribution = isinstance(self, AbstractDistribution)
         ancestors = set(self.nodes()) - set([self])
-        ancestors_distr = any(isinstance(node, Distribution) for node in ancestors)
+        ancestors_distr = any(
+            isinstance(node, AbstractDistribution) for node in ancestors
+        )
         return is_distribution and not ancestors_distr
 
     def correlate(self, *variables, corr_mat):
-        """Impose correlations on variables.
+        """Store correlations on variables.
 
         When `.correlate(*variables)` is called on a node, the variables must
         be ancestors of that node. The order of the variables should match the
-        order of the rows/columns in the correlation matrix.s
+        order of the rows/columns in the correlation matrix.
 
         Examples
         --------
@@ -508,11 +539,23 @@ class OverloadMixin:
     def __rmul__(self, other):
         return Multiply(self, other)
 
+    def __floordiv__(self, other):
+        return FloorDivide(self, other)
+
+    def __rfloordiv__(self, other):
+        return FloorDivide(other, self)
+
     def __truediv__(self, other):
         return Divide(self, other)
 
     def __rtruediv__(self, other):
         return Divide(other, self)
+
+    def __mod__(self, other):
+        return Mod(self, other)
+
+    def __rmod__(self, other):
+        return Mod(other, self)
 
     def __sub__(self, other):
         return Subtract(self, other)
@@ -544,10 +587,9 @@ class OverloadMixin:
     def __ge__(self, other):
         return GreaterThanOrEqual(self, other)
 
-    # TODO: __eq__ (==) and __ne__ (!=) are not implemented here (yet),
-    # because they are also used in set(nodes), which relies upon
-    # both equality checks and __hash__. We should probably remove all usage
-    # of set() within methods like  sample(), to free up == and != for modeling.
+    # TODO: __eq__ (==) and __ne__ (!=) are not implemented here,
+    # because they are used in set(nodes), which relies upon
+    # both equality checks and __hash__.
 
 
 class Constant(Node, OverloadMixin):
@@ -571,7 +613,11 @@ class Constant(Node, OverloadMixin):
         return f"{type(self).__name__}({self.value})"
 
 
-class Distribution(Node, OverloadMixin):
+class AbstractDistribution(Node, OverloadMixin, abc.ABC):
+    pass
+
+
+class Distribution(AbstractDistribution):
     """A distribution is a sampling node with or without ancestors."""
 
     def __init__(self, distr, *args, **kwargs):
@@ -619,10 +665,32 @@ class Distribution(Node, OverloadMixin):
         return list(self.get_parents()) == []
 
 
+class EmpiricalDistribution(AbstractDistribution):
+    """A distribution is a sampling node with or without ancestors.
+
+    A thin wrapper around numpy.quantile."""
+
+    is_leaf = True
+
+    def __init__(self, data, **kwargs):
+        self.data = np.array(data)
+        self.kwargs = kwargs
+        super().__init__()
+
+    def __repr__(self):
+        return f"{type(self).__name__}()"
+
+    def _sample(self, q):
+        return np.quantile(a=self.data, q=q, **self.kwargs)
+
+    def get_parents(self):
+        return []  # A EmpiricalDistribution does not have any parents
+
+
 # ========================================================
 
 
-class Transform(Node, abc.ABC, OverloadMixin):
+class Transform(Node, OverloadMixin, abc.ABC):
     """Transform nodes represent arithmetic operations."""
 
     is_leaf = False
@@ -677,6 +745,7 @@ class Any(VariadicTransform):
 
 class Avg(VariadicTransform):
     def _sample(self, size=None):
+        # Avg(a, Avg(b, c)) !=  Avg(Avg(a, b), c), so we override _sample()
         samples = tuple(parent.samples_ for parent in self.parents)
         return np.average(np.vstack(samples), axis=0)
 
@@ -696,6 +765,14 @@ class BinaryTransform(Transform):
         yield from self.parents
 
 
+class FloorDivide(BinaryTransform):
+    op = np.floor_divide
+
+
+class Mod(BinaryTransform):
+    op = np.mod
+
+
 class Divide(BinaryTransform):
     op = operator.truediv
 
@@ -713,19 +790,19 @@ class Equal(BinaryTransform):
 
 
 class LessThan(BinaryTransform):
-    op = operator.lt  # <
+    op = operator.lt
 
 
 class LessThanOrEqual(BinaryTransform):
-    op = operator.le  # <=
+    op = operator.le
 
 
 class GreaterThan(BinaryTransform):
-    op = operator.gt  # >
+    op = operator.gt
 
 
 class GreaterThanOrEqual(BinaryTransform):
-    op = operator.ge  # >=
+    op = operator.ge
 
 
 class UnaryTransform(Transform):
@@ -865,3 +942,9 @@ if __name__ == "__main__":
     plt.show()
 
     d1, d2, d3 = MultivariateDistribution("dirichlet", alpha=[1, 2, 3])
+
+    # =========================
+
+    cost = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
+    norm = Distribution("norm", loc=cost, scale=1)
+    (norm**2).sample(99, random_state=42)

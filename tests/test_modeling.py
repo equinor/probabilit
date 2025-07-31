@@ -1,4 +1,5 @@
 from probabilit.modeling import (
+    EmpiricalDistribution,
     Constant,
     Log,
     Exp,
@@ -177,6 +178,13 @@ def test_single_expression():
 def test_constant_idempotent():
     for a in [-1, 0.0, 1.3, 3]:
         assert Constant(Constant(a)).value == Constant(a).value
+
+
+def test_empirical_distribution():
+    # Test that an empirical distribution can be a parameter
+    location = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
+    result = Distribution("norm", loc=location, scale=1)
+    (result**2).sample(99, random_state=42)
 
 
 if __name__ == "__main__":
