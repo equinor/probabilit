@@ -145,7 +145,7 @@ def _triang_objective(parameters, desired):
     p10, mode, p90 = _triang_extract(triangular)
     actual = np.array([p10, mode, p90])
 
-    if not np.isfinite(actual).any():
+    if not np.isfinite(actual).all():
         return 1e3
 
     # RMSE
