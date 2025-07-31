@@ -20,6 +20,9 @@ def PERT(minimum, mode, maximum, gamma=4.0):
     >>> PERT(0, 6, 10, gamma=10)
     Distribution("beta", a=7.0, b=5.0, loc=0, scale=10)
     """
+    # Based on Wikipedia and another implementation:
+    # https://en.wikipedia.org/wiki/PERT_distribution
+    # https://github.com/Calvinxc1/PertDist/blob/6577394265f57153441b5908147d94115b9edeed/pert/pert.py#L80
     a, b, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma=gamma)
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
@@ -36,6 +39,8 @@ def Triangular(p10, mode, p90):
     >>> Triangular(p10=1, mode=5, p90=9)
     Distribution("triang", loc=-2.236068061140598, scale=14.472136057963969, c=0.5000000024295282)
     """
+    # A few comments on fitting can be found here:
+    # https://docs.analytica.com/index.php/Triangular10_50_90
 
     if not (p10 < mode < p90):
         raise ValueError(f"Must have {p10=} < {mode=} < {p90=}")
