@@ -38,6 +38,8 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     --------
     >>> Triangular(low=1, mode=5, high=9)
     Distribution("triang", loc=-2.236068061140598, scale=14.472136057963969, c=0.5000000024295282)
+    >>> Triangular(low=1, mode=5, high=9, low_perc=0.25, high_perc=0.75)
+    Distribution("triang", loc=-8.656853751016396, scale=27.313707268205516, c=0.5000000023789611)
     """
     # A few comments on fitting can be found here:
     # https://docs.analytica.com/index.php/Triangular10_50_90
@@ -89,7 +91,7 @@ def _triang_params_from_perc(low, mode, high, low_perc=0.1, high_perc=0.9):
 
     # Optimize
     result = sp.optimize.minimize(
-        _triang_objective, x0=x0, args=(desired,), method="BFGS"
+        _triang_objective, x0=x0, args=(desired, low_perc, high_perc), method="BFGS"
     )
 
     assert result.fun < 1e-2
@@ -132,7 +134,7 @@ def _triang_extract(triangular, low_perc=0.1, high_perc=0.9):
     return float(p10), float(mode), float(p90)
 
 
-def _triang_objective(parameters, desired):
+def _triang_objective(parameters, desired, low_perc, high_perc):
     """Pass parameters (loc, log(scale), logit(c)) into sp.stats.triang
     and return the RMSE between actual and desired (p10, mode, p90)."""
 
@@ -144,8 +146,8 @@ def _triang_objective(parameters, desired):
     triangular = sp.stats.triang(loc=loc, scale=scale, c=c)
 
     # Extract information
-    p10, mode, p90 = _triang_extract(triangular)
-    actual = np.array([p10, mode, p90])
+    low, mode, high = _triang_extract(triangular, low_perc, high_perc)
+    actual = np.array([low, mode, high])
 
     if not np.isfinite(actual).all():
         return 1e3
