@@ -8,15 +8,13 @@ import numpy as np
 
 
 class TestTriangular:
-    @pytest.mark.parametrize("c", [0.2, 0.5, 0.7])
+    @pytest.mark.parametrize("c", [0.25, 0.5, 0.7])
     @pytest.mark.parametrize("loc", [-1, 0, 1])
     @pytest.mark.parametrize("scale", [1, 10, 25])
-    def test_triang_params_from_perc(self, c, loc, scale):
+    @pytest.mark.parametrize("low_perc", [0.05, 0.1, 0.2])
+    def test_triang_params_from_perc(self, c, loc, scale, low_perc):
         # Test round-trips
-        a = loc
-        b = loc + scale
         mode = loc + c * scale
-        low_perc = 0.1
         high_perc = 0.8
 
         # Get parameters to optimize toward
@@ -24,7 +22,7 @@ class TestTriangular:
         target_low, target_high = distr.ppf([low_perc, high_perc])
 
         # Found parameters
-        a_f, b_f, c_f = _fit_trigen_distribution(
+        loc_f, scale_f, c_f = _fit_trigen_distribution(
             mode=mode,
             low=target_low,
             high=target_high,
@@ -32,7 +30,7 @@ class TestTriangular:
             high_perc=high_perc,
         )
 
-        np.testing.assert_allclose([a_f, b_f, c_f], [a, b, c], atol=1e-8)
+        np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)
 
 
 class TestPERT:

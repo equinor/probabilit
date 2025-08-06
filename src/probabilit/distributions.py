@@ -1,3 +1,5 @@
+import numpy as np
+import warnings
 import scipy as sp
 from probabilit.modeling import Distribution
 
@@ -48,17 +50,29 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
         raise ValueError("Percentiles must be between 0 and 1.")
 
     # Optimize parameters
-    a, b, c = _fit_trigen_distribution(
+    loc, scale, c = _fit_trigen_distribution(
         mode=mode,
         low=low,
         high=high,
         low_perc=low_perc,
         high_perc=high_perc,
     )
-    return Distribution("triang", loc=float(a), scale=float(b - a), c=float(c))
+    return Distribution("triang", loc=loc, scale=scale, c=c)
 
 
 def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
+    """Returns a tuple (loc, scale, c) to be used with scipy.
+
+    Examples
+    --------
+    >>> _fit_trigen_distribution(8, 3, 10, low_perc=0.10, high_perc=0.90)
+    (-0.20798609791776668, 12.538002235459674, 0.6546486388959271)
+    >>> _fit_trigen_distribution(8, 3, 10, low_perc=0.4, high_perc=0.6)
+    (-27.630133666236873, 65.82946735440106, 0.5412490044073675)
+    >>> _fit_trigen_distribution(8, 3, 10, low_perc=0, high_perc=1.0)
+    (3.0000000087355345, 6.999999995484782, 0.7142857134985173)
+    """
+
     def trigen_cdf(x, a, b, mode):
         """Calculate CDF of Trigen distribution at point x"""
         if x <= mode:
@@ -77,17 +91,19 @@ def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
         # Return the difference from target percentiles
         return (cdf_low - low_perc, cdf_high - high_perc)
 
-    # Initial guesses for a and b
+    # Initial guesses for a and b, the lower and upper bounds for support
     a0 = low - abs(mode - low)
     b0 = high + abs(high - mode)
 
     # Solve the system of equations
-    a_fitted, b_fitted = sp.optimize.fsolve(equations, (a0, b0))
+    a, b = sp.optimize.fsolve(equations, (a0, b0))
+    rmse = np.sqrt(np.sum(np.array(equations([a, b])) ** 2))
+    if rmse > 1e-6:
+        warnings.warn(f"Optimization of Triangular params has {rmse=}")
 
-    # Calculate the relative position of the mode
-    c = (mode - a_fitted) / (b_fitted - a_fitted)
-
-    return a_fitted, b_fitted, c
+    # Calculate the relative position of the mode, return (loc, scale, c)
+    c = (mode - a) / (b - a)
+    return float(a), float(b - a), float(c)
 
 
 def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
