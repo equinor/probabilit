@@ -8,10 +8,10 @@ import numpy as np
 
 
 class TestTriangular:
-    @pytest.mark.parametrize("c", [0.25, 0.5, 0.7])
+    @pytest.mark.parametrize("c", [0.1, 0.5, 0.7])
     @pytest.mark.parametrize("loc", [-1, 0, 1])
     @pytest.mark.parametrize("scale", [1, 10, 25])
-    @pytest.mark.parametrize("low_perc", [0.05, 0.1, 0.2])
+    @pytest.mark.parametrize("low_perc", [0.01, 0.05, 0.1, 0.2])
     def test_triang_params_from_perc(self, c, loc, scale, low_perc):
         # Test round-trips
         mode = loc + c * scale

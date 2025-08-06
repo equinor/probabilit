@@ -70,13 +70,15 @@ def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
     >>> _fit_trigen_distribution(8, 3, 10, low_perc=0.4, high_perc=0.6)
     (-27.630133666236873, 65.82946735440106, 0.5412490044073675)
     >>> _fit_trigen_distribution(8, 3, 10, low_perc=0, high_perc=1.0)
-    (3.0000000177479746, 7.000000005695321, 0.7142857111691342)
+    (3.00000001531508, 6.999999869614844, 0.7142857254024537)
     """
 
     def trigen_cdf(x, a, b, mode):
         """Calculate CDF of Trigen distribution at point x"""
-        if not (a < x < b):
+        if x <= a:
             return x * 0
+        if x >= b:
+            return x * 0 + 1.0
         if x <= mode:
             return ((x - a) ** 2) / ((b - a) * (mode - a))
         else:
@@ -94,8 +96,8 @@ def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
         return (cdf_low - low_perc, cdf_high - high_perc)
 
     # Initial guesses for a and b, the lower and upper bounds for support
-    a0 = low - abs(mode - low)
-    b0 = high + abs(high - mode)
+    a0 = low - abs(high - low)
+    b0 = high + abs(high - low)
 
     # Solve the system of equations
     a, b = sp.optimize.fsolve(equations, (a0, b0))
