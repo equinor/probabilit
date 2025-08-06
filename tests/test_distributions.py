@@ -1,5 +1,5 @@
 from probabilit.distributions import (
-    _fit_trigen_distribution,
+    _fit_triangular_distribution,
     _pert_to_beta,
 )
 import pytest
@@ -12,7 +12,7 @@ class TestTriangular:
     @pytest.mark.parametrize("loc", [-1, 0, 1])
     @pytest.mark.parametrize("scale", [1, 10, 25])
     @pytest.mark.parametrize("low_perc", [0.01, 0.05, 0.1, 0.2])
-    def test_triang_params_from_perc(self, c, loc, scale, low_perc):
+    def test_triangular_roundstrips(self, c, loc, scale, low_perc):
         # Test round-trips
         mode = loc + c * scale
         high_perc = 0.8
@@ -22,12 +22,34 @@ class TestTriangular:
         target_low, target_high = distr.ppf([low_perc, high_perc])
 
         # Found parameters
-        loc_f, scale_f, c_f = _fit_trigen_distribution(
+        loc_f, scale_f, c_f = _fit_triangular_distribution(
             mode=mode,
             low=target_low,
             high=target_high,
             low_perc=low_perc,
             high_perc=high_perc,
+        )
+
+        np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)
+
+    @pytest.mark.parametrize("delta", [0.001, 0.01, 0.1, 0.2, 0.3, 0.4])
+    def test_triangular_roundstrips_squeeze(self, delta):
+        loc = 0
+        scale = 10
+        c = 0.8
+        mode = loc + c * scale
+
+        # Get parameters to optimize toward
+        distr = triang(loc=loc, scale=scale, c=c)
+        target_low, target_high = distr.ppf([delta, 1 - delta])
+
+        # Found parameters
+        loc_f, scale_f, c_f = _fit_triangular_distribution(
+            mode=mode,
+            low=target_low,
+            high=target_high,
+            low_perc=delta,
+            high_perc=1 - delta,
         )
 
         np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)

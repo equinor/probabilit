@@ -46,13 +46,13 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
 
     if not (low < mode < high):
         raise ValueError(f"Must have {low=} < {mode=} < {high=}")
-    if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
+    if not ((0 < low_perc <= 1.0) and (0 <= high_perc < 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
     # Optimize parameters
-    loc, scale, c = _fit_trigen_distribution(
-        mode=mode,
+    loc, scale, c = _fit_triangular_distribution(
         low=low,
+        mode=mode,
         high=high,
         low_perc=low_perc,
         high_perc=high_perc,
@@ -60,21 +60,22 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     return Distribution("triang", loc=loc, scale=scale, c=c)
 
 
-def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
+def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90):
     """Returns a tuple (loc, scale, c) to be used with scipy.
 
     Examples
     --------
-    >>> _fit_trigen_distribution(8, 3, 10, low_perc=0.10, high_perc=0.90)
+    >>> _fit_triangular_distribution(3, 8, 10, low_perc=0.10, high_perc=0.90)
     (-0.20798609791776668, 12.538002235459674, 0.6546486388959271)
-    >>> _fit_trigen_distribution(8, 3, 10, low_perc=0.4, high_perc=0.6)
+    >>> _fit_triangular_distribution(3, 8, 10, low_perc=0.4, high_perc=0.6)
     (-27.630133666236873, 65.82946735440106, 0.5412490044073675)
-    >>> _fit_trigen_distribution(8, 3, 10, low_perc=0, high_perc=1.0)
+    >>> _fit_triangular_distribution(3, 8, 10, low_perc=0, high_perc=1.0)
     (3.00000001531508, 6.999999869614844, 0.7142857254024537)
+
     """
 
-    def trigen_cdf(x, a, b, mode):
-        """Calculate CDF of Trigen distribution at point x"""
+    def triangular_cdf(x, a, b, mode):
+        """Calculate CDF of triangular distribution at point x"""
         if x <= a:
             return x * 0
         if x >= b:
@@ -89,15 +90,15 @@ def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
         a, b = params
 
         # Calculate CDFs at the given percentile values
-        cdf_low = trigen_cdf(low, a, b, mode)
-        cdf_high = trigen_cdf(high, a, b, mode)
+        cdf_low = triangular_cdf(low, a, b, mode)
+        cdf_high = triangular_cdf(high, a, b, mode)
 
         # Return the difference from target percentiles
         return (cdf_low - low_perc, cdf_high - high_perc)
 
     # Initial guesses for a and b, the lower and upper bounds for support
-    a0 = low - abs(high - low)
-    b0 = high + abs(high - low)
+    a0 = low - abs(mode - low)
+    b0 = high + abs(high - mode)
 
     # Solve the system of equations
     a, b = sp.optimize.fsolve(equations, (a0, b0))
