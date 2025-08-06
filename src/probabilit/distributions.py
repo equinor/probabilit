@@ -27,7 +27,7 @@ def PERT(minimum, mode, maximum, gamma=4.0):
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
-def Triangular(p10, mode, p90):
+def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     """Find optimal scipy parametrization given (p10, mode, p90) and
     return Distribution("triang", loc=..., scale=..., c=...).
 
@@ -36,21 +36,23 @@ def Triangular(p10, mode, p90):
 
     Examples
     --------
-    >>> Triangular(p10=1, mode=5, p90=9)
+    >>> Triangular(low=1, mode=5, high=9)
     Distribution("triang", loc=-2.236068061140598, scale=14.472136057963969, c=0.5000000024295282)
     """
     # A few comments on fitting can be found here:
     # https://docs.analytica.com/index.php/Triangular10_50_90
 
-    if not (p10 < mode < p90):
-        raise ValueError(f"Must have {p10=} < {mode=} < {p90=}")
+    if not (low < mode < high):
+        raise ValueError(f"Must have {low=} < {mode=} < {high=}")
+    if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
+        raise ValueError("Percentiles must be between 0 and 1.")
 
     # Optimize parameters
-    loc, scale, c = _triang_params_from_perc(p10=p10, mode=mode, p90=p90)
+    loc, scale, c = _triang_params_from_perc(low, mode, high, low_perc, high_perc)
     return Distribution("triang", loc=loc, scale=scale, c=c)
 
 
-def _triang_params_from_perc(p10, mode, p90):
+def _triang_params_from_perc(low, mode, high, low_perc=0.1, high_perc=0.9):
     """Given (p10, mode, p90), finds (shift, scale, c).
 
     Examples
@@ -66,23 +68,23 @@ def _triang_params_from_perc(p10, mode, p90):
     >>> math.isclose(c, 0.85, rel_tol=0.001)
     True
     """
-    assert p10 < mode < p90
+    assert low < mode < high
 
     # Shift and scale inputs before solving optimization problem
-    spread = p90 - p10
-    center = (p90 + p10) / 2
-    p10 = (p10 - center) / spread
+    spread = high - low
+    center = (high + low) / 2
+    low = (low - center) / spread
     mode = (mode - center) / spread
-    p90 = (p90 - center) / spread
+    high = (high - center) / spread
 
     # Given (p10, mode, p90) we need to find a scipy parametrization
     # in terms of (loc, scale, c). This cannot be solved analytically.
-    desired = np.array([p10, mode, p90])
+    desired = np.array([low, mode, high])
 
     # Initial guess
-    loc_initial = p10
-    scale_initial = np.log(p90 - p10)
-    c_initial = sp.special.logit((mode - p10) / (p90 - p10))
+    loc_initial = low
+    scale_initial = np.log(high - low)
+    c_initial = sp.special.logit((mode - low) / (high - low))
     x0 = np.array([loc_initial, scale_initial, c_initial])
 
     # Optimize
@@ -108,7 +110,7 @@ def _triang_params_from_perc(p10, mode, p90):
     return float(loc_opt), float(scale_opt), float(c_opt)
 
 
-def _triang_extract(triangular):
+def _triang_extract(triangular, low_perc=0.1, high_perc=0.9):
     """Given a triangular distribution, extract (p10, mode, p90).
 
     Examples
@@ -121,7 +123,7 @@ def _triang_extract(triangular):
     >>> p90
     5.4
     """
-    p10, p90 = triangular.ppf([0.1, 0.9])
+    p10, p90 = triangular.ppf([low_perc, high_perc])
     loc = triangular.kwds.get("loc", 0)
     scale = triangular.kwds.get("scale", 1)
     c = triangular.kwds.get("c", 0.5)
