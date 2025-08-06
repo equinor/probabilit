@@ -70,11 +70,13 @@ def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
     >>> _fit_trigen_distribution(8, 3, 10, low_perc=0.4, high_perc=0.6)
     (-27.630133666236873, 65.82946735440106, 0.5412490044073675)
     >>> _fit_trigen_distribution(8, 3, 10, low_perc=0, high_perc=1.0)
-    (3.0000000087355345, 6.999999995484782, 0.7142857134985173)
+    (3.0000000177479746, 7.000000005695321, 0.7142857111691342)
     """
 
     def trigen_cdf(x, a, b, mode):
         """Calculate CDF of Trigen distribution at point x"""
+        if not (a <= x <= b):
+            return x * 0
         if x <= mode:
             return ((x - a) ** 2) / ((b - a) * (mode - a))
         else:
