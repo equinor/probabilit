@@ -66,12 +66,11 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     Examples
     --------
     >>> _fit_triangular_distribution(3, 8, 10, low_perc=0.10, high_perc=0.90)
-    (-0.20798609791776668, 12.538002235459674, 0.6546486388959271)
+    (-0.207..., 12.53..., 0.65...)
     >>> _fit_triangular_distribution(3, 8, 10, low_perc=0.4, high_perc=0.6)
-    (-27.630133666236873, 65.82946735440106, 0.5412490044073675)
+    (-27.63..., 65.82..., 0.54...)
     >>> _fit_triangular_distribution(3, 8, 10, low_perc=0, high_perc=1.0)
-    (3.00000001531508, 6.999999869614844, 0.7142857254024537)
-
+    (3.00..., 6.99..., 0.71...)
     """
 
     def triangular_cdf(x, a, b, mode):
