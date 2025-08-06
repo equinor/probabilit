@@ -49,18 +49,16 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
 
     # Optimize parameters
     a, b, c = _fit_trigen_distribution(
-        most_likely_val=mode,
-        low_val=low,
-        high_val=high,
-        lower_percentile=low_perc,
-        upper_percentile=high_perc,
+        mode=mode,
+        low=low,
+        high=high,
+        low_perc=low_perc,
+        high_perc=high_perc,
     )
     return Distribution("triang", loc=float(a), scale=float(b - a), c=float(c))
 
 
-def _fit_trigen_distribution(
-    most_likely_val, low_val, high_val, lower_percentile=0.10, upper_percentile=0.90
-):
+def _fit_trigen_distribution(mode, low, high, low_perc=0.10, high_perc=0.90):
     def trigen_cdf(x, a, b, mode):
         """Calculate CDF of Trigen distribution at point x"""
         if x <= mode:
@@ -73,21 +71,21 @@ def _fit_trigen_distribution(
         a, b = params
 
         # Calculate CDFs at the given percentile values
-        cdf_low = trigen_cdf(low_val, a, b, most_likely_val)
-        cdf_high = trigen_cdf(high_val, a, b, most_likely_val)
+        cdf_low = trigen_cdf(low, a, b, mode)
+        cdf_high = trigen_cdf(high, a, b, mode)
 
         # Return the difference from target percentiles
-        return (cdf_low - lower_percentile, cdf_high - upper_percentile)
+        return (cdf_low - low_perc, cdf_high - high_perc)
 
     # Initial guesses for a and b
-    a0 = low_val - abs(most_likely_val - low_val)
-    b0 = high_val + abs(high_val - most_likely_val)
+    a0 = low - abs(mode - low)
+    b0 = high + abs(high - mode)
 
     # Solve the system of equations
     a_fitted, b_fitted = sp.optimize.fsolve(equations, (a0, b0))
 
     # Calculate the relative position of the mode
-    c = (most_likely_val - a_fitted) / (b_fitted - a_fitted)
+    c = (mode - a_fitted) / (b_fitted - a_fitted)
 
     return a_fitted, b_fitted, c
 

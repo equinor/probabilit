@@ -15,21 +15,21 @@ class TestTriangular:
         # Test round-trips
         a = loc
         b = loc + scale
-        most_likely_val = loc + c * scale
-        lower_percentile = 0.1
-        upper_percentile = 0.8
+        mode = loc + c * scale
+        low_perc = 0.1
+        high_perc = 0.8
 
         # Get parameters to optimize toward
         distr = triang(loc=loc, scale=scale, c=c)
-        target_low, target_high = distr.ppf([lower_percentile, upper_percentile])
+        target_low, target_high = distr.ppf([low_perc, high_perc])
 
         # Found parameters
         a_f, b_f, c_f = _fit_trigen_distribution(
-            most_likely_val=most_likely_val,
-            low_val=target_low,
-            high_val=target_high,
-            lower_percentile=lower_percentile,
-            upper_percentile=upper_percentile,
+            mode=mode,
+            low=target_low,
+            high=target_high,
+            low_perc=low_perc,
+            high_perc=high_perc,
         )
 
         np.testing.assert_allclose([a_f, b_f, c_f], [a, b, c], atol=1e-8)
