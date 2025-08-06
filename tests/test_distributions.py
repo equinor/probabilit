@@ -1,6 +1,5 @@
 from probabilit.distributions import (
-    _triang_params_from_perc,
-    _triang_extract,
+    _fit_trigen_distribution,
     _pert_to_beta,
 )
 import pytest
@@ -9,21 +8,31 @@ import numpy as np
 
 
 class TestTriangular:
-    @pytest.mark.parametrize("c", np.linspace(0.5, 0.95, num=7))
-    @pytest.mark.parametrize("scale", [1, 10, 100, 1000])
-    @pytest.mark.parametrize("high_perc", [0.7, 0.8, 0.9])
-    def test_triang_params_from_perc(self, c, scale, high_perc):
+    @pytest.mark.parametrize("c", [0.2, 0.5, 0.7])
+    @pytest.mark.parametrize("loc", [-1, 0, 1])
+    @pytest.mark.parametrize("scale", [1, 10, 25])
+    def test_triang_params_from_perc(self, c, loc, scale):
         # Test round-trips
-        loc = 0
-        initial = np.array([loc, scale, c])
-        dist = triang(loc=loc, scale=scale, c=c)
-        p10, mode, high = _triang_extract(dist, high_perc=high_perc)
-        if (p10 < mode - 0.01) and (high > mode + 0.01):
-            loc, scale, c = _triang_params_from_perc(
-                p10, mode, high, high_perc=high_perc
-            )
-            final = np.array([loc, scale, c])
-            np.testing.assert_allclose(final, initial, atol=1e-3)
+        a = loc
+        b = loc + scale
+        most_likely_val = loc + c * scale
+        lower_percentile = 0.1
+        upper_percentile = 0.8
+
+        # Get parameters to optimize toward
+        distr = triang(loc=loc, scale=scale, c=c)
+        target_low, target_high = distr.ppf([lower_percentile, upper_percentile])
+
+        # Found parameters
+        a_f, b_f, c_f = _fit_trigen_distribution(
+            most_likely_val=most_likely_val,
+            low_val=target_low,
+            high_val=target_high,
+            lower_percentile=lower_percentile,
+            upper_percentile=upper_percentile,
+        )
+
+        np.testing.assert_allclose([a_f, b_f, c_f], [a, b, c], atol=1e-8)
 
 
 class TestPERT:
