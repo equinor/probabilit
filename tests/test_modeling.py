@@ -10,6 +10,7 @@ from probabilit.modeling import (
     Min,
     Max,
 )
+from probabilit.distributions import Triangular
 import numpy as np
 
 
@@ -89,6 +90,46 @@ class TestModelingExamples:
         # Regression test essentially
         np.testing.assert_allclose(samples.mean(), 76583.58738496085)
         np.testing.assert_allclose(samples.std(), 33483.2245611436)
+
+    def test_total_person_hours(self):
+        """Based on Example 19.2 from Risk Analysis: A Quantitative Guide, 3rd Edition by David Vose.
+
+        Estimate the number of person-hours requires to rivet 562 plates of a ship's hull.
+        The quickest anyone has ever riveted a single plate is 3h 45min, while the worst time recorded is 5h 30min.
+        Most likely value is estimated to be 4h 15min.
+        What is the total person-hours?
+
+        Naively, we could model the problem as:
+        total_person_hours = 562 * Triangular(3.75, 4.25, 5.5),
+        but note that the triangular distribution here models the uncertainty of an individual plate,
+        but we are using it as if it were the distribution of the average time for 562 plates.
+
+        A straight forward approach that gives the correct answer is to add 562 triangular distributions.
+        """
+
+        rng = np.random.default_rng(42)
+        num_rivets = 562
+        total_person_hours = 0
+
+        for i in range(num_rivets):
+            total_person_hours += Triangular(
+                low=3.75, mode=4.25, high=5.5, low_perc=0.00001, high_perc=0.99999
+            )
+
+        num_samples = 10000
+        res_total_person_hours = total_person_hours.sample(num_samples, rng)
+
+        # The mean and standard deviation of a Triangular(3.75, 4.25, 5.5) are 4.5 and 0.368,
+        # so by the Central Limit Theoreom we have that
+        # total_person_hours = Normal(4.5 * 562, 0.368 * sqrt(562)) = Normal(2529, 8.724)
+        expected_mean = 4.5 * num_rivets
+        expected_std = 0.368 * np.sqrt(num_rivets)
+
+        sample_mean = np.mean(res_total_person_hours)
+        sample_std = np.std(res_total_person_hours)
+
+        assert abs(sample_mean - expected_mean) < 0.3
+        assert abs(sample_std - expected_std) < 0.1
 
 
 def test_copying():
