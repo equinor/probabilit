@@ -40,23 +40,30 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     Distribution("triang", loc=-2.2360679774997894, scale=14.472135954999578, c=0.5000000000000001)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0.25, high_perc=0.75)
     Distribution("triang", loc=-8.656854249492383, scale=27.313708498984766, c=0.5)
+    >>> Triangular(low=1, mode=5, high=9, low_perc=0, high_perc=1)
+    Distribution("triang", loc=1, scale=8, c=0.5)
     """
     # A few comments on fitting can be found here:
     # https://docs.analytica.com/index.php/Triangular10_50_90
 
     if not (low < mode < high):
         raise ValueError(f"Must have {low=} < {mode=} < {high=}")
-    if not ((0 < low_perc <= 1.0) and (0 <= high_perc < 1.0)):
+    if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
-    # Optimize parameters
-    loc, scale, c = _fit_triangular_distribution(
-        low=low,
-        mode=mode,
-        high=high,
-        low_perc=low_perc,
-        high_perc=high_perc,
-    )
+    # No need to optimize if low and high are boundaries of distribution support
+    if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
+        loc, scale, c = low, high - low, (mode - low) / (high - low)
+
+    else:
+        # Optimize parameters
+        loc, scale, c = _fit_triangular_distribution(
+            low=low,
+            mode=mode,
+            high=high,
+            low_perc=low_perc,
+            high_perc=high_perc,
+        )
     return Distribution("triang", loc=loc, scale=scale, c=c)
 
 

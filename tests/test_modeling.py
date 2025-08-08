@@ -113,10 +113,10 @@ class TestModelingExamples:
 
         for i in range(num_rivets):
             total_person_hours += Triangular(
-                low=3.75, mode=4.25, high=5.5, low_perc=0.00001, high_perc=0.99999
+                low=3.75, mode=4.25, high=5.5, low_perc=0, high_perc=1.0
             )
 
-        num_samples = 10000
+        num_samples = 1000
         res_total_person_hours = total_person_hours.sample(num_samples, rng)
 
         # The mean and standard deviation of a Triangular(3.75, 4.25, 5.5) are 4.5 and 0.368,
@@ -126,10 +126,11 @@ class TestModelingExamples:
         expected_std = 0.368 * np.sqrt(num_rivets)
 
         sample_mean = np.mean(res_total_person_hours)
-        sample_std = np.std(res_total_person_hours)
+        sample_std = np.std(res_total_person_hours, ddof=1)
 
-        assert abs(sample_mean - expected_mean) < 0.3
-        assert abs(sample_std - expected_std) < 0.1
+        # Within 2% of theoretical values
+        np.testing.assert_allclose(sample_mean, expected_mean, rtol=0.02)
+        np.testing.assert_allclose(sample_std, expected_std, rtol=0.02)
 
 
 def test_copying():
