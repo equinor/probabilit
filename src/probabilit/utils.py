@@ -8,11 +8,19 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
 
     Examples
     --------
+    Data for a distribution with mean (2.5 + 5.5) / 2 = 4 leads to no change:
+    >>> adjust_minmax_quantiles([0, 0.5, 1], [0, 5, 6], expected=4.0)
+    array([0., 5., 6.])
+
+    Increasing the expected value to 5:
+    >>> adjust_minmax_quantiles([0, 0.5, 1], [0, 5, 6], expected=5)
+    array([2.00014464, 5.        , 7.99985536])
+
     >>> adjust_minmax_quantiles([0, 0.1, 0.3, 1], [0, 1, 1.5, 2], 1.6)
-    array([0.22282308, 1.        , 1.5       , 2.11834048])
+    array([0.03013972, 1.        , 1.5       , 2.20998004])
     """
-    quantiles = np.array(quantiles)
-    cumulatives = np.array(cumulatives)
+    quantiles = np.array(quantiles, dtype=float)
+    cumulatives = np.array(cumulatives, dtype=float)
     assert np.all(np.diff(quantiles) > 0)
     assert np.all(np.diff(cumulatives) > 0)
     assert np.isclose(np.min(quantiles), 0)
@@ -20,19 +28,17 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
 
     def empirical_mean(quantiles, cumulatives):
         """Compute the expected value of a histogram."""
-        return sp.stats.rv_histogram((quantiles[1:], cumulatives), density=True).mean()
+        return sp.stats.rv_histogram(
+            (np.diff(quantiles), cumulatives), density=False
+        ).mean()
 
     def transform(low_scale, high_scale, cumulatives):
         """Return new low and high values in the cumulatives."""
         cumulatives = cumulatives.copy()
         q1, q2 = cumulatives[:2]
         qn1, qn = cumulatives[-2:]
-        high = qn1 + np.exp(high_scale) * (qn - qn1)
-        low = q2 - np.exp(low_scale) * (q2 - q1)
-        assert (qn - qn1) > 0
-        assert (q2 - q1) > 0
-        assert high > qn1
-        assert low < q2
+        high = max(qn1 + np.exp(high_scale) * (qn - qn1), qn1 + 1e-6)
+        low = min(q2 - np.exp(low_scale) * (q2 - q1), q2 - 1e-6)
         return (low, high)
 
     def objective(params, quantiles, cumulatives, expected):
