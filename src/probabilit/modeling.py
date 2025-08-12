@@ -683,33 +683,38 @@ class EmpiricalDistribution(AbstractDistribution):
 
 
 class QuantileDistribution(AbstractDistribution):
-    """A distribution is a sampling node with or without ancestors.
+    """A distribution defined by cumulative quantiles.
 
-    A thin wrapper around numpy.quantile."""
+    Examples
+    --------
+    >>> distr = QuantileDistribution([0, 0.2, 0.8, 1], [10, 15, 20, 25])
+    >>> distr._sample(np.linspace(0, 1, num=6))
+    array([10.        , 15.        , 16.66666667, 18.33333333, 20.        ,
+           25.        ])
+    >>> distr.sample(9, random_state=42)
+    array([16.45450099, 23.76785766, 19.43328285, 18.32215403, 13.90046601,
+           13.89986301, 11.4520903 , 21.65440364, 18.3426251 ])
+    """
 
     is_leaf = True
 
-    def __init__(self, q, cumulative, **kwargs):
-        self.q = np.array(q)
+    def __init__(self, quantiles, cumulative):
+        self.q = np.array(quantiles)
         self.cumulative = np.array(cumulative)
         assert np.all(np.diff(self.q) > 0)
         assert np.all(np.diff(self.cumulative) > 0)
-        assert np.min(q) >= 0
-        assert np.max(q) <= 1
-        self.kwargs = kwargs
-
-        # TODO: setup linear interpolation
-
+        assert np.isclose(np.min(self.q), 0)
+        assert np.isclose(np.max(self.q), 1)
         super().__init__()
 
     def __repr__(self):
-        return f"{type(self).__name__}()"
+        return f"{type(self).__name__}(q={repr(self.q)}, cumulative={repr(self.q)})"
 
     def _sample(self, q):
-        return np.quantile(a=self.data, q=q, **self.kwargs)
+        return np.interp(x=q, xp=self.q, fp=self.cumulative)
 
     def get_parents(self):
-        return []  # A EmpiricalDistribution does not have any parents
+        return []
 
 
 # ========================================================
