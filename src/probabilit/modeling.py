@@ -708,7 +708,7 @@ class QuantileDistribution(AbstractDistribution):
         super().__init__()
 
     def __repr__(self):
-        return f"{type(self).__name__}(q={repr(self.q)}, cumulative={repr(self.q)})"
+        return f"{type(self).__name__}(q={repr(self.q)}, cumulative={repr(self.cumulative)})"
 
     def _sample(self, q):
         return np.interp(x=q, xp=self.q, fp=self.cumulative)
