@@ -1,5 +1,67 @@
 import itertools
 import numpy as np
+import scipy as sp
+
+
+def adjust_minmax_quantiles(quantiles, cumulatives, expected):
+    """Adjust minimum and maximum in `quantiles` so we hit expected value.
+
+    Examples
+    --------
+    >>> adjust_minmax_quantiles([0, 0.1, 0.3, 1], [0, 1, 1.5, 2], 1.6)
+    array([0.22282308, 1.        , 1.5       , 2.11834048])
+    """
+    quantiles = np.array(quantiles)
+    cumulatives = np.array(cumulatives)
+    assert np.all(np.diff(quantiles) > 0)
+    assert np.all(np.diff(cumulatives) > 0)
+    assert np.isclose(np.min(quantiles), 0)
+    assert np.isclose(np.max(quantiles), 1)
+
+    def empirical_mean(quantiles, cumulatives):
+        """Compute the expected value of a histogram."""
+        return sp.stats.rv_histogram((quantiles[1:], cumulatives), density=True).mean()
+
+    def transform(low_scale, high_scale, cumulatives):
+        """Return new low and high values in the cumulatives."""
+        cumulatives = cumulatives.copy()
+        q1, q2 = cumulatives[:2]
+        qn1, qn = cumulatives[-2:]
+        high = qn1 + np.exp(high_scale) * (qn - qn1)
+        low = q2 - np.exp(low_scale) * (q2 - q1)
+        assert (qn - qn1) > 0
+        assert (q2 - q1) > 0
+        assert high > qn1
+        assert low < q2
+        return (low, high)
+
+    def objective(params, quantiles, cumulatives, expected):
+        """Objective function to minimize."""
+        low_scale, high_scale = params
+
+        # Transform the endpoints of the cumulatives
+        (low, high) = transform(low_scale, high_scale, cumulatives)
+        cumulatives_copy = np.array(cumulatives)
+        cumulatives_copy[0], cumulatives_copy[-1] = low, high
+
+        observed_mean = empirical_mean(quantiles, cumulatives_copy)
+
+        # Create objective and return
+        main_obj = np.abs(observed_mean - expected)
+        bi_obj = (low - cumulatives[0]) ** 2 + (high - cumulatives[-1]) ** 2
+        return main_obj + 1e-2 * bi_obj
+
+    result = sp.optimize.minimize(
+        fun=objective,
+        args=(quantiles, cumulatives, expected),
+        x0=[0, 0],
+        method="nelder-mead",
+    )
+    low_scale, high_scale = result.x
+    (low, high) = transform(low_scale, high_scale, cumulatives)
+    cumulatives[0], cumulatives[-1] = low, high
+
+    return cumulatives
 
 
 def zip_args(args, kwargs):
@@ -45,3 +107,9 @@ def build_corrmat(correlations):
         C[np.ix_(idx_i, idx_i)] = corrmat_i
 
     return C
+
+
+if __name__ == "__main__":
+    import pytest
+
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
