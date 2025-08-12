@@ -682,6 +682,36 @@ class EmpiricalDistribution(AbstractDistribution):
         return []  # A EmpiricalDistribution does not have any parents
 
 
+class QuantileDistribution(AbstractDistribution):
+    """A distribution is a sampling node with or without ancestors.
+
+    A thin wrapper around numpy.quantile."""
+
+    is_leaf = True
+
+    def __init__(self, q, cumulative, **kwargs):
+        self.q = np.array(q)
+        self.cumulative = np.array(cumulative)
+        assert np.all(np.diff(self.q) > 0)
+        assert np.all(np.diff(self.cumulative) > 0)
+        assert np.min(q) >= 0
+        assert np.max(q) <= 1
+        self.kwargs = kwargs
+
+        # TODO: setup linear interpolation
+
+        super().__init__()
+
+    def __repr__(self):
+        return f"{type(self).__name__}()"
+
+    def _sample(self, q):
+        return np.quantile(a=self.data, q=q, **self.kwargs)
+
+    def get_parents(self):
+        return []  # A EmpiricalDistribution does not have any parents
+
+
 # ========================================================
 
 
