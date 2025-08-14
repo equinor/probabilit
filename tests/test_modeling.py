@@ -155,6 +155,60 @@ class TestModelingExamples:
         # At least one of the realizations should be identical
         assert np.any(np.isclose(height1.samples_, height2.samples_))
 
+    def test_fault_controlled_owc_correlation(self):
+        """
+        Test that oil-water contact (OWC) correlation between segments
+        depends on fault state in geological modeling.
+
+        When fault is open (leaking): Seg2 should have same contact as Seg1
+        When fault is closed: Seg2 should follow independent distribution (1950-2000m)
+        """
+        # Setup
+        rng = np.random.default_rng(42)
+        n_samples = 100
+
+        # Seg1: OWC = 2000 +/- 5 m (observed segment)
+        owc1 = Distribution("uniform", loc=1995, scale=10)
+
+        # Fault state: 30% probability of being open (leaking)
+        fault_is_open = Distribution("bernoulli", p=0.3)
+
+        # Seg2: Conditional OWC based on fault state
+        # If fault open: same as Seg1
+        # If fault closed: independent uniform distribution 1950-2000m
+        owc2 = fault_is_open * owc1 + (1 - fault_is_open) * Distribution(
+            "uniform", loc=1950, scale=50
+        )
+
+        # Generate samples
+        owc2_samples = owc2.sample(n_samples, rng)
+
+        # Get individual component samples for verification
+        owc1_samples = owc1.samples_
+        fault_samples = fault_is_open.samples_.astype(bool)
+        owc2_samples = owc2.samples_
+
+        # Verify fault-controlled correlation
+        for i in range(n_samples):
+            if fault_samples[i]:  # Fault is open (leaking)
+                assert np.isclose(owc2_samples[i], owc1_samples[i], rtol=1e-10), (
+                    f"Sample {i}: When fault is open, Seg2 OWC ({owc2_samples[i]:.2f}) "
+                    f"should equal Seg1 OWC ({owc1_samples[i]:.2f})"
+                )
+            else:  # Fault is closed
+                assert 1950 <= owc2_samples[i] <= 2000, (
+                    f"Sample {i}: When fault is closed, Seg2 OWC ({owc2_samples[i]:.2f}) "
+                    f"should be in independent range [1950-2000m]"
+                )
+
+        # Additional statistical checks
+        open_fault_count = np.sum(fault_samples)
+        closed_fault_count = n_samples - open_fault_count
+
+        # Verify we have reasonable sample sizes for both scenarios
+        assert open_fault_count > 0, "Should have some samples with open fault"
+        assert closed_fault_count > 0, "Should have some samples with closed fault"
+
 
 def test_copying():
     # Create a graph
