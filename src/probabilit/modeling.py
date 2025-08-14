@@ -682,12 +682,12 @@ class EmpiricalDistribution(AbstractDistribution):
         return []  # A EmpiricalDistribution does not have any parents
 
 
-class QuantileDistribution(AbstractDistribution):
+class CumulativeDistribution(AbstractDistribution):
     """A distribution defined by cumulative quantiles.
 
     Examples
     --------
-    >>> distr = QuantileDistribution([0, 0.2, 0.8, 1], [10, 15, 20, 25])
+    >>> distr = CumulativeDistribution([0, 0.2, 0.8, 1], [10, 15, 20, 25])
     >>> distr._sample(np.linspace(0, 1, num=6))
     array([10.        , 15.        , 16.66666667, 18.33333333, 20.        ,
            25.        ])
@@ -698,11 +698,11 @@ class QuantileDistribution(AbstractDistribution):
 
     is_leaf = True
 
-    def __init__(self, quantiles, cumulative):
+    def __init__(self, quantiles, cumulatives):
         self.q = np.array(quantiles)
-        self.cumulative = np.array(cumulative)
+        self.cumulatives = np.array(cumulatives)
         assert np.all(np.diff(self.q) > 0)
-        assert np.all(np.diff(self.cumulative) > 0)
+        assert np.all(np.diff(self.cumulatives) > 0)
         assert np.isclose(np.min(self.q), 0)
         assert np.isclose(np.max(self.q), 1)
         super().__init__()
@@ -711,7 +711,7 @@ class QuantileDistribution(AbstractDistribution):
         return f"{type(self).__name__}(q={repr(self.q)}, cumulative={repr(self.cumulative)})"
 
     def _sample(self, q):
-        return np.interp(x=q, xp=self.q, fp=self.cumulative)
+        return np.interp(x=q, xp=self.q, fp=self.cumulatives)
 
     def get_parents(self):
         return []
