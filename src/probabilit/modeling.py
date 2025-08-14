@@ -701,16 +701,19 @@ class CumulativeDistribution(AbstractDistribution):
     def __init__(self, quantiles, cumulatives):
         self.q = np.array(quantiles)
         self.cumulatives = np.array(cumulatives)
-        assert np.all(np.diff(self.q) > 0)
-        assert np.all(np.diff(self.cumulatives) > 0)
-        assert np.isclose(np.min(self.q), 0)
-        assert np.isclose(np.max(self.q), 1)
+        if not np.all(np.diff(self.q) > 0):
+            raise ValueError("The quantiles must be strictly increasing.")
+        if not np.all(np.diff(self.cumulatives) > 0):
+            raise ValueError("The cumulatives must be strictly increasing.")
+        if not (np.isclose(np.min(self.q), 0) and np.isclose(np.max(self.q), 1)):
+            raise ValueError("Lowest quantile must be 0 and highest must be 1.")
         super().__init__()
 
     def __repr__(self):
-        return f"{type(self).__name__}(q={repr(self.q)}, cumulative={repr(self.cumulative)})"
+        return f"{type(self).__name__}(quantiles={repr(self.q)}, cumulatives={repr(self.cumulatives)})"
 
     def _sample(self, q):
+        # Inverse CDF sampling
         return np.interp(x=q, xp=self.q, fp=self.cumulatives)
 
     def get_parents(self):
