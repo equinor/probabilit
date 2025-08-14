@@ -222,8 +222,7 @@ def test_constant_idempotent():
         assert Constant(Constant(a)).value == Constant(a).value
 
 
-def test_empirical_distribution():
-    # Test that an empirical distribution can be a parameter
+def test_that_an_empirical_distribution_can_be_a_parameter():
     location = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
     result = Distribution("norm", loc=location, scale=1)
     (result**2).sample(99, random_state=42)
