@@ -152,7 +152,7 @@ class TestModelingExamples:
         # This is the answer to the question
         (abs(height2 - height1)).sample(999, random_state=42)
 
-        # At least one of the realizations should be idential
+        # At least one of the realizations should be identical
         assert np.any(np.isclose(height1.samples_, height2.samples_))
 
 
