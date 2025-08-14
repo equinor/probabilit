@@ -132,6 +132,29 @@ class TestModelingExamples:
         np.testing.assert_allclose(sample_mean, expected_mean, rtol=0.02)
         np.testing.assert_allclose(sample_std, expected_std, rtol=0.02)
 
+    def test_conditional_if_statement(self):
+        """Suppose mens height has distribution N(176, 7.1).
+        What is the distribution of the difference between height of two men?
+        Caveat: there is a 10% chance that the two men are identical twins,
+        and in that case their height should be perfectly equal.
+        """
+
+        # Height of two random men
+        height1 = Distribution("norm", loc=176, scale=7.1)
+        height2 = Distribution("norm", loc=176, scale=7.1)
+
+        # If they are twins, their height should be perfectly correlated
+        is_twin = Distribution("bernoulli", p=0.1)
+
+        # height2 = IF(is_twin, height1, height2)
+        height2 = is_twin * height1 + (1 - is_twin) * height2
+
+        # This is the answer to the question
+        (abs(height2 - height1)).sample(999, random_state=42)
+
+        # At least one of the realizations should be idential
+        assert np.any(np.isclose(height1.samples_, height2.samples_))
+
 
 def test_copying():
     # Create a graph
