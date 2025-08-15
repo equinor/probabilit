@@ -8,6 +8,37 @@ def Normal(loc, scale):
     return Distribution("norm", loc=loc, scale=scale)
 
 
+def Lognormal(mean, std):
+    """
+    Create a lognormal distribution with specified mean and standard deviation.
+    Parameters correspond directly to the mean and standard deviation
+    of the resulting lognormal distribution.
+    """
+    assert mean > 0, f"Mean must be positive, got {mean}"
+    assert std > 0, f"Standard deviation must be positive, got {std}"
+    assert np.isfinite(mean), f"Mean must be finite, got {mean}"
+    assert np.isfinite(std), f"Standard deviation must be finite, got {std}"
+
+    variance = std**2
+
+    # In the following, mean and std / variance are moments of the Lognormal distribution,
+    # while mu and sigma refer to moments of the Normal distribution.
+    # By definition:
+    # mean = exp(mu + sigma^2 / 2)
+    # variance = exp(sigma^2 - 1) * exp(2mu + sigma^2)
+    # Derivation of sigma_squared:
+    # variance / mean = exp(sigma^2 - 1)
+    # Add one to both sides and take logarithm to get
+    # log(variance / mean + 1) = sigma^2
+    # Derivation of mu readily follows from definition.
+    sigma_squared = np.log(1 + variance / (mean**2))
+    sigma = np.sqrt(sigma_squared)
+
+    mu = np.log(mean) - sigma_squared / 2
+
+    return Distribution("lognorm", s=sigma, scale=np.exp(mu))
+
+
 def PERT(minimum, mode, maximum, gamma=4.0):
     """Returns a Beta distribution, parameterized by the PERT parameters.
 
