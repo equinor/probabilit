@@ -137,9 +137,9 @@ def test_orthogonality_precision(rng):
     # Threshold found by running thousands of tests.
     # This will fail much more often if we do not use the variance
     # reduction technique described in the paper.
-    assert np.all(np.abs(achieved_zeros) < 0.12), (
-        "Zero correlations not maintained with sufficient precision"
-    )
+    assert np.all(
+        np.abs(achieved_zeros) < 0.12
+    ), "Zero correlations not maintained with sufficient precision"
 
 
 class TestImanConover:
