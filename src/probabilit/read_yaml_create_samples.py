@@ -1,9 +1,18 @@
-from probabilit.modeling import Distribution, Add
+from probabilit.modeling import (
+    Distribution,
+    Add,
+    EmpiricalDistribution,
+    CumulativeDistribution,
+)
 import yaml
 from yaml.loader import Loader
 import pandas as pd
-import numpy as np
 import scipy as sp
+
+TYPE_MAPPING = {
+    "empiricaldistribution": EmpiricalDistribution,
+    "cumulativedistribution": CumulativeDistribution,
+}
 
 if __name__ == "__main__":
     file = "config.yml"
@@ -20,7 +29,16 @@ if __name__ == "__main__":
     # Convert dict of {name:data, ...} to {name:Distribution, ...}
     for varname in variables.keys():
         vardata = variables[varname]
-        variables[varname] = Distribution(vardata["type"], **vardata["parameters"])
+        var_type = vardata["type"].lower()
+
+        # See if variable matches one of the non-scipy distributions first
+        if var_type in TYPE_MAPPING.keys():
+            var_class = TYPE_MAPPING[var_type]
+            variables[varname] = var_class(**vardata["parameters"])
+            continue
+
+        # Not a non-scipy distribution, so try scipy next
+        variables[varname] = Distribution(var_type, **vardata["parameters"])
 
     # Dummy expression to sample all parents
     expression = Add(*variables.values())

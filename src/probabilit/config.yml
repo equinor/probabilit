@@ -25,6 +25,13 @@ variables:
       loc: 180
       scale: 10
       
+  Children:
+    type: "EmpiricalDistribution"
+    parameters:
+      data: [1, 3, 2, 4, 5, 2, 3, 4]
+      method: "closest_observation"
+  
+      
       
 correlations:
   - 0.2: [Steel_Cost, Maintenance_Cost]
