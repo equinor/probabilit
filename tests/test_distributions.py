@@ -1,6 +1,7 @@
 from probabilit.distributions import (
     _fit_triangular_distribution,
     _pert_to_beta,
+    Lognormal,
 )
 import pytest
 from scipy.stats import triang
@@ -53,6 +54,33 @@ class TestTriangular:
         )
 
         np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)
+
+
+class TestLognormal:
+    @pytest.mark.parametrize(
+        "mean,std",
+        [
+            (1.0, 0.5),
+            (10.0, 1.0),
+            (100.0, 20.0),
+        ],
+    )
+    def test_lognormal_moments(self, mean, std):
+        rng = np.random.default_rng(42)
+        dist = Lognormal(mean, std)
+        samples = dist.sample(10000, rng)
+
+        np.testing.assert_allclose(np.mean(samples), mean, rtol=0.05)
+        np.testing.assert_allclose(np.std(samples), std, rtol=0.05)
+
+    def test_lognormal_invalid_inputs(self):
+        # Test input validation
+        with pytest.raises(AssertionError, match="Mean must be positive"):
+            Lognormal(-1, 5)
+        with pytest.raises(AssertionError, match="Standard deviation must be positive"):
+            Lognormal(10, -2)
+        with pytest.raises(AssertionError, match="Mean must be finite"):
+            Lognormal(np.inf, 5)
 
 
 class TestPERT:
