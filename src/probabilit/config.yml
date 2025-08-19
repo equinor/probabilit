@@ -1,0 +1,20 @@
+
+metadata:
+  name: "Comprehensive Project Risk Analysis"
+  description: "Complete risk analysis including direct costs, quality impacts, schedule effects, market variations, and risk adjustments"
+  samples: 9
+  sampling_method: "latin_hypercube"
+
+variables:
+  # Direct Material and Equipment
+  Steel_Cost:
+    type: "norm"
+    parameters:
+      loc: 800000
+      scale: 1200000
+
+  Maintenance_Cost:
+    type: "uniform"
+    parameters:
+      loc: 0
+      scale: 1
