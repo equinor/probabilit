@@ -17,6 +17,8 @@ TYPE_MAPPING = {
 if __name__ == "__main__":
     file = "config.yml"
 
+    # =================== LOAD ===================
+
     # Load data from file into a dictionary
     with open(file, "r") as file_handle:
         yaml_data = yaml.load(file_handle, Loader)
@@ -26,19 +28,23 @@ if __name__ == "__main__":
     variables = yaml_data["variables"]
     correlations = yaml_data.get("correlations", [])
 
+    # =================== CONVERT ===================
+
     # Convert dict of {name:data, ...} to {name:Distribution, ...}
     for varname in variables.keys():
         vardata = variables[varname]
-        var_type = vardata["type"].lower()
+        var_type = vardata.pop("type").lower()
 
         # See if variable matches one of the non-scipy distributions first
         if var_type in TYPE_MAPPING.keys():
             var_class = TYPE_MAPPING[var_type]
-            variables[varname] = var_class(**vardata["parameters"])
+            variables[varname] = var_class(**vardata)
             continue
 
         # Not a non-scipy distribution, so try scipy next
-        variables[varname] = Distribution(var_type, **vardata["parameters"])
+        variables[varname] = Distribution(var_type, **vardata)
+
+    # =================== CORRELATIONS ===================
 
     # Dummy expression to sample all parents
     expression = Add(*variables.values())
@@ -57,8 +63,14 @@ if __name__ == "__main__":
         # Add correlation pair
         expression.correlate(var1, var2, corr_mat=corr_mat)
 
+    # =================== SAMPLE ===================
+
     # Samle the expression, which populates `.samples_` on Distributions
-    expression.sample(size=metadata["samples"])
+    expression.sample(
+        size=metadata["samples"],
+        random_state=metadata["seed"],
+        method=metadata["sampling_method"],
+    )
 
     # Collect all samples into a dataframe
     df_samples = pd.DataFrame(
