@@ -18,3 +18,14 @@ variables:
     parameters:
       loc: 0
       scale: 1
+      
+  Height:
+    type: "norm"
+    parameters:
+      loc: 180
+      scale: 10
+      
+      
+correlations:
+  - 0.2: [Steel_Cost, Maintenance_Cost]
+  - 0.5: [Height, Maintenance_Cost]
