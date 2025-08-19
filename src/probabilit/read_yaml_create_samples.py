@@ -4,6 +4,7 @@ from probabilit.modeling import (
     EmpiricalDistribution,
     CumulativeDistribution,
 )
+import seaborn
 import yaml
 from yaml.loader import Loader
 import pandas as pd
@@ -27,6 +28,7 @@ if __name__ == "__main__":
     metadata = yaml_data["metadata"]
     variables = yaml_data["variables"]
     correlations = yaml_data.get("correlations", [])
+    plots = yaml_data.get("plot", [])
 
     # =================== CONVERT ===================
 
@@ -78,5 +80,13 @@ if __name__ == "__main__":
     )
 
     print(df_samples)
-
     print(df_samples.corr())
+    
+    # =================== PLOTS ===================
+    
+    for vars_plot in plots:
+        vars_plot = [vars_plot] if isinstance(vars_plot, str) else vars_plot
+        df = pd.DataFrame(
+            {var_plot: variables[var_plot].samples_ for var_plot in vars_plot})
+        seaborn.pairplot(df)
+        

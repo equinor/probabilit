@@ -4,6 +4,7 @@ metadata:
   description: "Complete risk analysis including direct costs, quality impacts, schedule effects, market variations, and risk adjustments"
   samples: 999
   sampling_method: "lhs"
+  # correlation_method: ""
   seed: 42
 
 variables:
@@ -33,3 +34,9 @@ variables:
 correlations:
   - 0.2: [Steel_Cost, Maintenance_Cost]
   - 0.5: [Height, Maintenance_Cost]
+  
+  
+plot:
+  - [Steel_Cost, Maintenance_Cost]
+  - Steel_Cost
+  - [Steel_Cost, Maintenance_Cost, Height, Children]
