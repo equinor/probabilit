@@ -1,14 +1,12 @@
-
 metadata:
-  name: "Comprehensive Project Risk Analysis"
-  description: "Complete risk analysis including direct costs, quality impacts, schedule effects, market variations, and risk adjustments"
+  name: "Name for a test"
+  description: "Description for a test"
   samples: 999
   sampling_method: "lhs"
   # correlation_method: ""
   seed: 42
 
 variables:
-  # Direct Material and Equipment
   Steel_Cost:
     type: "norm"
     loc: 800000
@@ -28,14 +26,11 @@ variables:
     type: "EmpiricalDistribution"
     data: [1, 3, 2, 4, 5, 2, 3, 4]
     method: "closest_observation"
-  
-      
-      
+
 correlations:
   - 0.2: [Steel_Cost, Maintenance_Cost]
   - 0.5: [Height, Maintenance_Cost]
-  
-  
+
 plot:
   - [Steel_Cost, Maintenance_Cost]
   - Steel_Cost
