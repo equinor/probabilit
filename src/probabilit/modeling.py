@@ -720,6 +720,51 @@ class CumulativeDistribution(AbstractDistribution):
         return []
 
 
+class DiscreteDistribution(AbstractDistribution):
+    """A discrete (or categorical) distribution defined by values and probabilities.
+
+    Examples
+    --------
+    >>> distr = DiscreteDistribution([10, 15, 20], probabilities=[0.2, 0.3, 0.5])
+    >>> distr._sample(np.linspace(0, 1, num=5, endpoint=False))
+    array([10, 15, 15, 20, 20])
+    >>> distr = DiscreteDistribution(["A", "B", "C", "D", "E", "F"])
+    >>> distr.sample(9, random_state=42)
+    array(['C', 'F', 'E', 'D', 'A', 'A', 'A', 'F', 'D'], dtype='<U1')
+    """
+
+    is_leaf = True
+
+    def __init__(self, values, probabilities=None):
+        self.values = np.array(values)
+        if probabilities is None:
+            self.probabilities = np.ones(len(self.values), dtype=float)
+            self.probabilities = self.probabilities / np.sum(self.probabilities)
+        else:
+            self.probabilities = np.array(probabilities)
+
+        if not len(self.values) == len(self.probabilities):
+            raise ValueError(
+                f"Length mismatch: {len(self.values)=}  {len(self.probabilities)=}"
+            )
+        if not np.isclose(np.sum(self.probabilities), 1.0):
+            raise ValueError(f"Probabilities must sum to 1. {sum(self.probabilities)=}")
+        if np.any(self.probabilities < 0):
+            raise ValueError("Probabilities are not non-negative.")
+        super().__init__()
+
+    def __repr__(self):
+        return f"{type(self).__name__}(values={repr(self.values)}, probabilities={repr(self.probabilities)})"
+
+    def _sample(self, q):
+        cumulative_probabilities = np.cumsum(self.probabilities)
+        idx = np.searchsorted(cumulative_probabilities, v=q, side="right")
+        return self.values[idx]
+
+    def get_parents(self):
+        return []
+
+
 # ========================================================
 
 
