@@ -3,16 +3,21 @@ from probabilit.modeling import (
     Add,
     EmpiricalDistribution,
     CumulativeDistribution,
+    DiscreteDistribution,
+    NoOp,
 )
 import seaborn
 import yaml
 from yaml.loader import Loader
 import pandas as pd
 import scipy as sp
+import operator
+import functools
 
 TYPE_MAPPING = {
     "empiricaldistribution": EmpiricalDistribution,
     "cumulativedistribution": CumulativeDistribution,
+    "discretedistribution": DiscreteDistribution,
 }
 
 if __name__ == "__main__":
@@ -29,6 +34,7 @@ if __name__ == "__main__":
     variables = yaml_data["variables"]
     correlations = yaml_data.get("correlations", [])
     plots = yaml_data.get("plot", [])
+    derived = yaml_data.get("derived", [])
 
     # =================== CONVERT ===================
 
@@ -49,7 +55,7 @@ if __name__ == "__main__":
     # =================== CORRELATIONS ===================
 
     # Dummy expression to sample all parents
-    expression = Add(*variables.values())
+    expression = NoOp(*variables.values())
 
     # Add every correlation pair
     # NOTE if we define correlations between (a, b) and (c, d)
@@ -79,8 +85,16 @@ if __name__ == "__main__":
         {name: distr.samples_ for (name, distr) in variables.items()}
     )
 
+    # =================== DERIVED ===================
+    for derived_from, data in derived.items():
+        for derived_to in data.keys():
+            mapping = functools.reduce(operator.ior, data[derived_to])
+            df_samples = df_samples.assign(
+                **{derived_to: lambda df: df[derived_from].map(mapping)}
+            )
+
     print(df_samples)
-    print(df_samples.corr())
+    print(df_samples.select_dtypes("number").corr())
 
     # =================== PLOTS ===================
 

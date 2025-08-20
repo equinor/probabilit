@@ -828,6 +828,13 @@ class Avg(VariadicTransform):
         return np.average(np.vstack(samples), axis=0)
 
 
+class NoOp(VariadicTransform):
+    """Sample all ancestor variables, but do nothing else."""
+
+    def _sample(self, size=None):
+        tuple(parent.samples_ for parent in self.parents)
+
+
 class BinaryTransform(Transform):
     """Class for binary transforms, such as Divide, Power, Subtract, etc."""
 
