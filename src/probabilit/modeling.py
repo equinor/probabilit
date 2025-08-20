@@ -745,7 +745,7 @@ class DiscreteDistribution(AbstractDistribution):
 
         if not len(self.values) == len(self.probabilities):
             raise ValueError(
-                "Length mismatch: {len(self.values)=}  {len(self.probabilities)=}"
+                f"Length mismatch: {len(self.values)=}  {len(self.probabilities)=}"
             )
         if not np.isclose(np.sum(self.probabilities), 1.0):
             raise ValueError("Probabilities must sum to 1. {sum(self.probabilities)=}")
