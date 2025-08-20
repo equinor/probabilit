@@ -1,6 +1,5 @@
 from probabilit.modeling import (
     Distribution,
-    Add,
     EmpiricalDistribution,
     CumulativeDistribution,
     DiscreteDistribution,
@@ -86,8 +85,11 @@ if __name__ == "__main__":
     )
 
     # =================== DERIVED ===================
+    # Derived variables AFTER correlations, since inducing correlations
+    # on derived variables would break the connection.
     for derived_from, data in derived.items():
         for derived_to in data.keys():
+            # Create mapping {from1: to1, from2: to2, ...} and apply it
             mapping = functools.reduce(operator.ior, data[derived_to])
             df_samples = df_samples.assign(
                 **{derived_to: lambda df: df[derived_from].map(mapping)}

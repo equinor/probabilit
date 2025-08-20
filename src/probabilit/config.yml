@@ -41,8 +41,6 @@ derived:
     TypicalAge: # The derived parameter
       - "no": 16 # mapping: From -> To
       - "yes": 32
-  
-
 plot:
   - [Steel_Cost, Maintenance_Cost]
   - Steel_Cost
