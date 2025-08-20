@@ -39,6 +39,21 @@ def Lognormal(mean, std):
     return Distribution("lognorm", s=sigma, scale=np.exp(mu))
 
 
+def LognormalFromLogParams(mu, sigma):
+    """
+    Create a lognormal distribution from log-space parameters.
+
+    Parameters correspond to the mean and standard deviation of the
+    underlying normal distribution (i.e., the parameters of log(X) where
+    X is the lognormal random variable).
+    """
+    assert np.isfinite(mu), f"Mu must be finite, got {mu}"
+    assert sigma > 0, f"Sigma must be positive, got {sigma}"
+    assert np.isfinite(sigma), f"Sigma must be finite, got {sigma}"
+
+    return Distribution("lognorm", s=sigma, scale=np.exp(mu))
+
+
 def PERT(minimum, mode, maximum, gamma=4.0):
     """Returns a Beta distribution, parameterized by the PERT parameters.
 

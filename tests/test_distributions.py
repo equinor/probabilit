@@ -2,6 +2,7 @@ from probabilit.distributions import (
     _fit_triangular_distribution,
     _pert_to_beta,
     Lognormal,
+    LognormalFromLogParams,
 )
 import pytest
 from scipy.stats import triang
@@ -72,6 +73,27 @@ class TestLognormal:
 
         np.testing.assert_allclose(np.mean(samples), mean, rtol=0.05)
         np.testing.assert_allclose(np.std(samples), std, rtol=0.05)
+
+    @pytest.mark.parametrize(
+        "mu,sigma",
+        [
+            (0.0, 0.5),
+            (1.0, 1.0),
+            (-0.5, 0.3),
+        ],
+    )
+    def test_lognormal_from_log_params_moments(self, mu, sigma):
+        rng = np.random.default_rng(42)
+        dist = LognormalFromLogParams(mu, sigma)
+        samples = dist.sample(10000, rng)
+
+        # Calculate expected moments from log-space parameters
+        expected_mean = np.exp(mu + sigma**2 / 2)
+        expected_variance = (np.exp(sigma**2) - 1) * np.exp(2 * mu + sigma**2)
+        expected_std = np.sqrt(expected_variance)
+
+        np.testing.assert_allclose(np.mean(samples), expected_mean, rtol=0.05)
+        np.testing.assert_allclose(np.std(samples), expected_std, rtol=0.05)
 
     def test_lognormal_invalid_inputs(self):
         # Test input validation
