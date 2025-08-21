@@ -2,6 +2,7 @@ from probabilit.distributions import (
     _fit_triangular_distribution,
     _pert_to_beta,
     Lognormal,
+    Uniform,
 )
 import pytest
 from scipy.stats import triang
@@ -121,6 +122,27 @@ class TestPERT:
         # Desired mean of PERT matches actual mean of beta
         mean = (1 + gamma * 4 + maximum) / (gamma + 2)
         np.testing.assert_allclose(mean, (a / (a + b)) * scale + loc)
+
+
+class TestUniform:
+    @pytest.mark.parametrize(
+        "min_val,max_val", [(-5, 5), (0, 15), (10, 100), (-10, -2), (1, 2)]
+    )
+    def test_uniform_properties(self, min_val, max_val):
+        rng = np.random.default_rng(42)
+        dist = Uniform(min_val, max_val)
+        samples = dist.sample(10000, rng)
+
+        # Test that all samples are within bounds
+        assert np.all(samples >= min_val)
+        assert np.all(samples <= max_val)
+
+        expected_mean = (min_val + max_val) / 2
+        np.testing.assert_allclose(np.mean(samples), expected_mean, rtol=0.1, atol=0.1)
+
+        expected_variance = (max_val - min_val) ** 2 / 12
+        expected_std = np.sqrt(expected_variance)
+        np.testing.assert_allclose(np.std(samples), expected_std, rtol=0.05)
 
 
 if __name__ == "__main__":
