@@ -4,7 +4,7 @@ import scipy as sp
 from probabilit.modeling import Distribution
 
 
-def Uniform(min, max):
+def Uniform(min=0, max=1):
     return Distribution("uniform", loc=min, scale=max - min)
 
 
