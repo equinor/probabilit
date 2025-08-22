@@ -12,6 +12,7 @@ import pandas as pd
 import scipy as sp
 import operator
 import functools
+import argparse
 
 TYPE_MAPPING = {
     "empiricaldistribution": EmpiricalDistribution,
@@ -19,21 +20,16 @@ TYPE_MAPPING = {
     "discretedistribution": DiscreteDistribution,
 }
 
-if __name__ == "__main__":
-    file = "config.yml"
 
-    # =================== LOAD ===================
-
-    # Load data from file into a dictionary
-    with open(file, "r") as file_handle:
-        yaml_data = yaml.load(file_handle, Loader)
+def design_matrix(config, verbose=0):
+    """Given a dictionary config, returns a dataframe with samples."""
 
     # Load sections of the dictionary as variables
-    metadata = yaml_data["metadata"]
-    variables = yaml_data["variables"]
-    correlations = yaml_data.get("correlations", [])
-    plots = yaml_data.get("plot", [])
-    derived = yaml_data.get("derived", [])
+    metadata = config["metadata"]
+    variables = config["variables"]
+    correlations = config.get("correlations", [])
+    plots = config.get("plot", [])
+    derived = config.get("derived", [])
 
     # =================== CONVERT ===================
 
@@ -95,8 +91,11 @@ if __name__ == "__main__":
                 **{derived_to: lambda df: df[derived_from].map(mapping)}
             )
 
-    print(df_samples)
-    print(df_samples.select_dtypes("number").corr())
+    if verbose > 0:
+        print("========== DESIGN MATRIX ==========")
+        print(df_samples)
+        print("========== CORRELATIONS ==========")
+        print(df_samples.select_dtypes("number").corr())
 
     # =================== PLOTS ===================
 
@@ -106,3 +105,107 @@ if __name__ == "__main__":
             {var_plot: variables[var_plot].samples_ for var_plot in vars_plot}
         )
         seaborn.pairplot(df)
+
+    return df_samples
+
+
+def cmd_designmatr(args):
+    """Execute the subcommand."""
+    print(args)
+
+    # Load data from file into a dictionary
+    with open(args.config, "r") as file_handle:
+        config = yaml.load(file_handle, Loader)
+        print(f"Loaded: {args.config}")
+
+    df_samples = design_matrix(config, verbose=args.verbose)
+    df_samples.to_csv(args.output, index=False)
+    print(f"Saved: {args.output}")
+
+
+def one_by_one(df, defaults=None, verbose=0):
+    """Transform a (n, p) dataframe to (n x p, p), keeping
+    all but one variable (column) constant at a time."""
+    if defaults is None:
+        defaults = dict()
+
+    for key in defaults.keys():
+        if key not in df.columns:
+            raise ValueError("Default {key=} not in {df.columns=}")
+
+    # Average for numeric, mode for rest
+    averages = df.select_dtypes("number").mean().to_dict()
+    modes = df.select_dtypes("number").mode().T.to_dict()[0]
+    constants = (averages | modes) | defaults
+
+    assert set(constants.keys()) == set(df.columns)
+
+    if verbose:
+        print(f"Constants: {constants}")
+
+    dfs = []
+    for column in df.columns:
+        # Set all columns except the current one to a constant
+        avg_map = {k: v for (k, v) in constants.items() if k != column}
+        dfs.append(df.assign(**avg_map))
+
+    return pd.concat(dfs)
+
+
+def cmd_onebyone(args):
+    """Execute the subcommand."""
+    print(args)
+
+    df = pd.read_csv(args.designmatrix)
+    print(f"Loaded: {args.designmatrix}")
+
+    if args.config is not None:
+        with open(args.config, "r") as file_handle:
+            config = yaml.load(file_handle, Loader)
+            print(f"Loaded: {args.config}")
+            defaults = config["defaults"]  # Default map col -> const
+    else:
+        defaults = None
+
+    df = one_by_one(df, defaults=defaults, verbose=args.verbose)
+    df.to_csv(args.output, index=False)
+    print(f"Saved: {args.output}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog="ProgramName",
+        description="What the program does",
+        epilog="Text at the bottom of help",
+    )
+
+    subparsers = parser.add_subparsers(help="")
+
+    # Parse the 'designmatrix' subcommand
+    p1 = subparsers.add_parser(
+        "designmatrix", help="Creates a design matrix (random samples)."
+    )
+    p1.add_argument("config", help="A .yml config file.")
+    p1.add_argument("--output", help="An output .csv file.", default="designmatrix.csv")
+    p1.add_argument("--verbose", "-v", action="count", default=0)
+    p1.set_defaults(func=cmd_designmatr)
+
+    # Parse the 'onebyone' subcommand
+    p2 = subparsers.add_parser(
+        "onebyone", help="Transform a design matrix to a one-by-one matrix."
+    )
+    p2.add_argument("designmatrix", help="Input .csv file.", default="designmatrix.csv")
+    p2.add_argument("--config", help="A .yml config file.", default=None)
+    p2.add_argument(
+        "--output",
+        action="store",
+        type=str,
+        help="Output file name.",
+        default="onebyone.csv",
+    )
+    p2.add_argument("--verbose", "-v", action="count", default=0)
+    p2.set_defaults(func=cmd_onebyone)
+
+    # Parse args and pass to function
+    args = parser.parse_args()
+    args.func(args)
