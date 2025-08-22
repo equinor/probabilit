@@ -2,7 +2,6 @@ from probabilit.distributions import (
     _fit_triangular_distribution,
     _pert_to_beta,
     Lognormal,
-    LognormalFromLogParams,
 )
 import pytest
 from scipy.stats import triang
@@ -84,7 +83,7 @@ class TestLognormal:
     )
     def test_lognormal_from_log_params_moments(self, mu, sigma):
         rng = np.random.default_rng(42)
-        dist = LognormalFromLogParams(mu, sigma)
+        dist = Lognormal.from_log_params(mu, sigma)
         samples = dist.sample(10000, rng)
 
         # Calculate expected moments from log-space parameters
