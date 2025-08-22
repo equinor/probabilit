@@ -109,20 +109,6 @@ def design_matrix(config, verbose=0):
     return df_samples
 
 
-def cmd_designmatr(args):
-    """Execute the subcommand."""
-    print(args)
-
-    # Load data from file into a dictionary
-    with open(args.config, "r") as file_handle:
-        config = yaml.load(file_handle, Loader)
-        print(f"Loaded: {args.config}")
-
-    df_samples = design_matrix(config, verbose=args.verbose)
-    df_samples.to_csv(args.output, index=False)
-    print(f"Saved: {args.output}")
-
-
 def one_by_one(df, defaults=None, verbose=0):
     """Transform a (n, p) dataframe to (n x p, p), keeping
     all but one variable (column) constant at a time."""
@@ -154,7 +140,6 @@ def one_by_one(df, defaults=None, verbose=0):
 
 def cmd_onebyone(args):
     """Execute the subcommand."""
-    print(args)
 
     df = pd.read_csv(args.designmatrix)
     print(f"Loaded: {args.designmatrix}")
@@ -168,6 +153,19 @@ def cmd_onebyone(args):
         defaults = None
 
     df = one_by_one(df, defaults=defaults, verbose=args.verbose)
+    df.to_csv(args.output, index=False)
+    print(f"Saved: {args.output}")
+
+
+def cmd_designmatr(args):
+    """Execute the subcommand."""
+
+    # Load data from file into a dictionary
+    with open(args.config, "r") as file_handle:
+        config = yaml.load(file_handle, Loader)
+        print(f"Loaded: {args.config}")
+
+    df = design_matrix(config, verbose=args.verbose)
     df.to_csv(args.output, index=False)
     print(f"Saved: {args.output}")
 
