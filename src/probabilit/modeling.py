@@ -483,7 +483,7 @@ class Node(abc.ABC):
                 node.samples_ = node._sample(size=size)
             elif isinstance(node, AbstractDistribution):
                 node.samples_ = node._sample(q=next(columns))
-            elif isinstance(node, (Transform, MarginalDistribution)):
+            elif isinstance(node, Transform):
                 node.samples_ = node._sample()
             else:
                 raise TypeError("Node must be Constant, Distribution or Transform.")
@@ -1008,7 +1008,7 @@ def scalar_transform(func):
     return transformed_function
 
 
-class MarginalDistribution(Node, OverloadMixin):
+class MarginalDistribution(Transform):
     """A maginal distribution is a 'slice' of a multivariate distribution.
 
     Examples
