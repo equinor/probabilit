@@ -142,6 +142,8 @@ Here is an example with a multivariate normal distribution:
 >>> n1, n2 = MultivariateDistribution("multivariate_normal", mean=[1, 2], cov=cov)
 >>> n1.sample(5, random_state=0)
 array([0.72058767, 3.13703525, 2.38930155, 1.50866787, 0.77018653])
+>>> (n1 + n2).sample(5, random_state=0)
+array([2.52848604, 5.31650094, 5.20076878, 4.06217341, 1.40748585])
 
 Samplers
 --------
@@ -1030,7 +1032,7 @@ class MarginalDistribution(Transform):
 
     def _sample(self):
         # Simply slice the parent
-        return self.distr.samples_[:, self.d]
+        return np.atleast_2d(self.distr.samples_)[:, self.d]
 
     def get_parents(self):
         yield self.distr
