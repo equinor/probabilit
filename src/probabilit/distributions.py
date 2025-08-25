@@ -12,6 +12,20 @@ def Normal(loc, scale):
     return Distribution("norm", loc=loc, scale=scale)
 
 
+def TruncatedNormal(loc, scale, low, high):
+    """A truncated Normal distribution.
+
+    Examples
+    --------
+    >>> distr = TruncatedNormal(loc=0, scale=1, low=3, high=3.3)
+    >>> distr.sample(7, random_state=0).round(3)
+    array([3.13 , 3.182, 3.146, 3.129, 3.095, 3.159, 3.099])
+    """
+    # (a, b) are defined in terms of loc and scale, so transform them
+    a, b = (low - loc) / scale, (high - loc) / scale
+    return Distribution("truncnorm", a=a, b=b, loc=loc, scale=scale)
+
+
 class Lognormal:
     def __init__(self, mean, std):
         """
