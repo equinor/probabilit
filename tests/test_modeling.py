@@ -10,6 +10,7 @@ from probabilit.modeling import (
     Min,
     Max,
 )
+from probabilit.distributions import Triangular
 import numpy as np
 
 
@@ -89,6 +90,124 @@ class TestModelingExamples:
         # Regression test essentially
         np.testing.assert_allclose(samples.mean(), 76583.58738496085)
         np.testing.assert_allclose(samples.std(), 33483.2245611436)
+
+    def test_total_person_hours(self):
+        """Based on Example 19.2 from Risk Analysis: A Quantitative Guide, 3rd Edition by David Vose.
+
+        Estimate the number of person-hours requires to rivet 562 plates of a ship's hull.
+        The quickest anyone has ever riveted a single plate is 3h 45min, while the worst time recorded is 5h 30min.
+        Most likely value is estimated to be 4h 15min.
+        What is the total person-hours?
+
+        Naively, we could model the problem as:
+        total_person_hours = 562 * Triangular(3.75, 4.25, 5.5),
+        but note that the triangular distribution here models the uncertainty of an individual plate,
+        but we are using it as if it were the distribution of the average time for 562 plates.
+
+        A straight forward approach that gives the correct answer is to add 562 triangular distributions.
+        """
+
+        rng = np.random.default_rng(42)
+        num_rivets = 562
+        total_person_hours = 0
+
+        for i in range(num_rivets):
+            total_person_hours += Triangular(
+                low=3.75, mode=4.25, high=5.5, low_perc=0, high_perc=1.0
+            )
+
+        num_samples = 1000
+        res_total_person_hours = total_person_hours.sample(num_samples, rng)
+
+        # The mean and standard deviation of a Triangular(3.75, 4.25, 5.5) are 4.5 and 0.368,
+        # so by the Central Limit Theoreom we have that
+        # total_person_hours = Normal(4.5 * 562, 0.368 * sqrt(562)) = Normal(2529, 8.724)
+        expected_mean = 4.5 * num_rivets
+        expected_std = 0.368 * np.sqrt(num_rivets)
+
+        sample_mean = np.mean(res_total_person_hours)
+        sample_std = np.std(res_total_person_hours, ddof=1)
+
+        # Within 2% of theoretical values
+        np.testing.assert_allclose(sample_mean, expected_mean, rtol=0.02)
+        np.testing.assert_allclose(sample_std, expected_std, rtol=0.02)
+
+    def test_conditional_if_statement(self):
+        """Suppose mens height has distribution N(176, 7.1).
+        What is the distribution of the difference between height of two men?
+        Caveat: there is a 10% chance that the two men are identical twins,
+        and in that case their height should be perfectly equal.
+        """
+
+        # Height of two random men
+        height1 = Distribution("norm", loc=176, scale=7.1)
+        height2 = Distribution("norm", loc=176, scale=7.1)
+
+        # If they are twins, their height should be perfectly correlated
+        is_twin = Distribution("bernoulli", p=0.1)
+
+        # height2 = IF(is_twin, height1, height2)
+        height2 = is_twin * height1 + (1 - is_twin) * height2
+
+        # This is the answer to the question
+        (abs(height2 - height1)).sample(999, random_state=42)
+
+        # At least one of the realizations should be identical
+        assert np.any(np.isclose(height1.samples_, height2.samples_))
+
+    def test_fault_controlled_owc_correlation(self):
+        """
+        Test that oil-water contact (OWC) correlation between segments
+        depends on fault state in geological modeling.
+
+        When fault is open (leaking): Seg2 should have same contact as Seg1
+        When fault is closed: Seg2 should follow independent distribution (1950-2000m)
+        """
+        # Setup
+        rng = np.random.default_rng(42)
+        n_samples = 100
+
+        # Seg1: OWC = 2000 +/- 5 m (observed segment)
+        owc1 = Distribution("uniform", loc=1995, scale=10)
+
+        # Fault state: 30% probability of being open (leaking)
+        fault_is_open = Distribution("bernoulli", p=0.3)
+
+        # Seg2: Conditional OWC based on fault state
+        # If fault open: same as Seg1
+        # If fault closed: independent uniform distribution 1950-2000m
+        owc2 = fault_is_open * owc1 + (1 - fault_is_open) * Distribution(
+            "uniform", loc=1950, scale=50
+        )
+
+        # Generate samples
+        owc2_samples = owc2.sample(n_samples, rng)
+
+        # Get individual component samples for verification
+        owc1_samples = owc1.samples_
+        fault_samples = fault_is_open.samples_.astype(bool)
+        owc2_samples = owc2.samples_
+
+        # Verify fault-controlled correlation
+        for i in range(n_samples):
+            if fault_samples[i]:  # Fault is open (leaking)
+                assert np.isclose(owc2_samples[i], owc1_samples[i], rtol=1e-10), (
+                    f"Sample {i}: When fault is open, Seg2 OWC ({owc2_samples[i]:.2f}) "
+                    f"should equal Seg1 OWC ({owc1_samples[i]:.2f})"
+                )
+            else:  # Fault is closed
+                assert 1950 <= owc2_samples[i] <= 2000, (
+                    f"Sample {i}: When fault is closed, Seg2 OWC ({owc2_samples[i]:.2f}) "
+                    f"should be in independent range [1950-2000m]"
+                )
+
+        # Additional statistical checks
+        open_fault_count = np.sum(fault_samples)
+        closed_fault_count = n_samples - open_fault_count
+
+        # Verify we have reasonable sample sizes for both scenarios
+        assert open_fault_count > 0, "Should have some samples with open fault"
+        assert closed_fault_count > 0, "Should have some samples with closed fault"
 
 
 def test_copying():
@@ -180,8 +299,7 @@ def test_constant_idempotent():
         assert Constant(Constant(a)).value == Constant(a).value
 
 
-def test_empirical_distribution():
-    # Test that an empirical distribution can be a parameter
+def test_that_an_empirical_distribution_can_be_a_parameter():
     location = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
     result = Distribution("norm", loc=location, scale=1)
     (result**2).sample(99, random_state=42)

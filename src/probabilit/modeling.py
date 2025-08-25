@@ -687,6 +687,89 @@ class EmpiricalDistribution(AbstractDistribution):
         return []  # A EmpiricalDistribution does not have any parents
 
 
+class CumulativeDistribution(AbstractDistribution):
+    """A distribution defined by cumulative quantiles.
+
+    Examples
+    --------
+    >>> distr = CumulativeDistribution([0, 0.2, 0.8, 1], [10, 15, 20, 25])
+    >>> distr._sample(np.linspace(0, 1, num=6))
+    array([10.        , 15.        , 16.66666667, 18.33333333, 20.        ,
+           25.        ])
+    >>> distr.sample(9, random_state=42)
+    array([16.45450099, 23.76785766, 19.43328285, 18.32215403, 13.90046601,
+           13.89986301, 11.4520903 , 21.65440364, 18.3426251 ])
+    """
+
+    is_leaf = True
+
+    def __init__(self, quantiles, cumulatives):
+        self.q = np.array(quantiles)
+        self.cumulatives = np.array(cumulatives)
+        if not np.all(np.diff(self.q) > 0):
+            raise ValueError("The quantiles must be strictly increasing.")
+        if not np.all(np.diff(self.cumulatives) > 0):
+            raise ValueError("The cumulatives must be strictly increasing.")
+        if not (np.isclose(np.min(self.q), 0) and np.isclose(np.max(self.q), 1)):
+            raise ValueError("Lowest quantile must be 0 and highest must be 1.")
+        super().__init__()
+
+    def __repr__(self):
+        return f"{type(self).__name__}(quantiles={repr(self.q)}, cumulatives={repr(self.cumulatives)})"
+
+    def _sample(self, q):
+        # Inverse CDF sampling
+        return np.interp(x=q, xp=self.q, fp=self.cumulatives)
+
+    def get_parents(self):
+        return []
+
+
+class DiscreteDistribution(AbstractDistribution):
+    """A discrete (or categorical) distribution defined by values and probabilities.
+
+    Examples
+    --------
+    >>> distr = DiscreteDistribution([10, 15, 20], probabilities=[0.2, 0.3, 0.5])
+    >>> distr._sample(np.linspace(0, 1, num=5, endpoint=False))
+    array([10, 15, 15, 20, 20])
+    >>> distr = DiscreteDistribution(["A", "B", "C", "D", "E", "F"])
+    >>> distr.sample(9, random_state=42)
+    array(['C', 'F', 'E', 'D', 'A', 'A', 'A', 'F', 'D'], dtype='<U1')
+    """
+
+    is_leaf = True
+
+    def __init__(self, values, probabilities=None):
+        self.values = np.array(values)
+        if probabilities is None:
+            self.probabilities = np.ones(len(self.values), dtype=float)
+            self.probabilities = self.probabilities / np.sum(self.probabilities)
+        else:
+            self.probabilities = np.array(probabilities)
+
+        if not len(self.values) == len(self.probabilities):
+            raise ValueError(
+                f"Length mismatch: {len(self.values)=}  {len(self.probabilities)=}"
+            )
+        if not np.isclose(np.sum(self.probabilities), 1.0):
+            raise ValueError(f"Probabilities must sum to 1. {sum(self.probabilities)=}")
+        if np.any(self.probabilities < 0):
+            raise ValueError("Probabilities are not non-negative.")
+        super().__init__()
+
+    def __repr__(self):
+        return f"{type(self).__name__}(values={repr(self.values)}, probabilities={repr(self.probabilities)})"
+
+    def _sample(self, q):
+        cumulative_probabilities = np.cumsum(self.probabilities)
+        idx = np.searchsorted(cumulative_probabilities, v=q, side="right")
+        return self.values[idx]
+
+    def get_parents(self):
+        return []
+
+
 # ========================================================
 
 
@@ -748,6 +831,13 @@ class Avg(VariadicTransform):
         # Avg(a, Avg(b, c)) !=  Avg(Avg(a, b), c), so we override _sample()
         samples = tuple(parent.samples_ for parent in self.parents)
         return np.average(np.vstack(samples), axis=0)
+
+
+class NoOp(VariadicTransform):
+    """Sample all ancestor variables, but do nothing else."""
+
+    def _sample(self, size=None):
+        tuple(parent.samples_ for parent in self.parents)
 
 
 class BinaryTransform(Transform):
