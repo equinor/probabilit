@@ -7,19 +7,22 @@ Inspection of results, plotting, tables, exporting, etc.
 
 import seaborn
 import pandas as pd
-from probabilit.modeling import Add, Distribution
+from probabilit.modeling import NoOp, Distribution
 import numpy as np
 
 
 def plot(*variables, corr=None, **kwargs):
     """Utility function for quick plotting of one or several variables."""
-    # TODO: This function can be improved or customized. For now we use seaborn
+    has_samples = [hasattr(var, "samples_") for var in variables]
+    if not (all(has_samples) or not any(has_samples)):
+        raise ValueError("Either all variables must be sampled or none must be.")
 
-    # Create an adder node, then copy the adder (which copies all parents too)
-    # This prevents us from mutating the input arguments
-    adder = Add(*variables).copy()
-    variables = adder.parents  # Get reference back to the variables
-    adder.sample(size=999, random_state=42)  # Sample to populate _samples
+    if not any(has_samples):
+        # Create an NoOp node, then copy the NoOp (which copies all parents too)
+        # This prevents us from mutating the input arguments
+        no_operation = NoOp(*variables).copy()
+        variables = no_operation.parents  # Get reference back to the variables
+        no_operation.sample(size=999, random_state=42)  # Sample to populate _samples
 
     df = pd.DataFrame(
         {f"var_{i}": var.samples_ for (i, var) in enumerate(variables, 1)}

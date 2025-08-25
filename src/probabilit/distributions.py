@@ -4,39 +4,52 @@ import scipy as sp
 from probabilit.modeling import Distribution
 
 
+def Uniform(min=0, max=1):
+    return Distribution("uniform", loc=min, scale=max - min)
+
+
 def Normal(loc, scale):
     return Distribution("norm", loc=loc, scale=scale)
 
 
-def Lognormal(mean, std):
-    """
-    Create a lognormal distribution with specified mean and standard deviation.
-    Parameters correspond directly to the mean and standard deviation
-    of the resulting lognormal distribution.
-    """
-    assert mean > 0, f"Mean must be positive, got {mean}"
-    assert std > 0, f"Standard deviation must be positive, got {std}"
-    assert np.isfinite(mean), f"Mean must be finite, got {mean}"
-    assert np.isfinite(std), f"Standard deviation must be finite, got {std}"
+class Lognormal:
+    def __init__(self, mean, std):
+        """
+        Create a lognormal distribution with specified mean and standard deviation.
+        Parameters correspond directly to the mean and standard deviation
+        of the resulting lognormal distribution.
+        """
+        assert mean > 0, f"Mean must be positive, got {mean}"
+        assert std > 0, f"Standard deviation must be positive, got {std}"
+        assert np.isfinite(mean), f"Mean must be finite, got {mean}"
+        assert np.isfinite(std), f"Standard deviation must be finite, got {std}"
 
-    variance = std**2
+        variance = std**2
+        sigma_squared = np.log(1 + variance / (mean**2))
+        sigma = np.sqrt(sigma_squared)
+        mu = np.log(mean) - sigma_squared / 2
 
-    # In the following, mean and std / variance are moments of the Lognormal distribution,
-    # while mu and sigma refer to moments of the Normal distribution.
-    # By definition:
-    # mean = exp(mu + sigma^2 / 2)
-    # variance = exp(sigma^2 - 1) * exp(2mu + sigma^2)
-    # Derivation of sigma_squared:
-    # variance / mean = exp(sigma^2 - 1)
-    # Add one to both sides and take logarithm to get
-    # log(variance / mean + 1) = sigma^2
-    # Derivation of mu readily follows from definition.
-    sigma_squared = np.log(1 + variance / (mean**2))
-    sigma = np.sqrt(sigma_squared)
+        self.distribution = Distribution("lognorm", s=sigma, scale=np.exp(mu))
 
-    mu = np.log(mean) - sigma_squared / 2
+    @classmethod
+    def from_log_params(cls, mu, sigma):
+        """
+        Create a lognormal distribution from log-space parameters.
+        Parameters correspond to the mean and standard deviation of the
+        underlying normal distribution (i.e., the parameters of log(X) where
+        X is the lognormal random variable).
+        """
+        assert np.isfinite(mu), f"Mu must be finite, got {mu}"
+        assert sigma > 0, f"Sigma must be positive, got {sigma}"
+        assert np.isfinite(sigma), f"Sigma must be finite, got {sigma}"
 
-    return Distribution("lognorm", s=sigma, scale=np.exp(mu))
+        # Create a dummy instance and set its distribution
+        instance = cls.__new__(cls)
+        instance.distribution = Distribution("lognorm", s=sigma, scale=np.exp(mu))
+        return instance
+
+    def __getattr__(self, name):
+        return getattr(self.distribution, name)
 
 
 def PERT(minimum, mode, maximum, gamma=4.0):
