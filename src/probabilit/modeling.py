@@ -114,8 +114,37 @@ array([212.45401188, 290.14286128, 248.19939418, 234.86584842,
        200.        , 200.        , 200.        , 273.23522915,
        235.11150117])
 
+Multivariate distributions
+--------------------------
+Support for multivariate distributions (MVD) is implemented, but with constraints:
+
+  1. MVD must be a leaf node (its arguments cannot be other distributions)
+  2. its return values *must* be unpacked as marginals (slices)
+
+For instance, to create a Dirichlet distribution, we must unpack it as follows:
+
+>>> d1, d2 = MultivariateDistribution("dirichlet", alpha=[1, 2])
+>>> d1
+MarginalDistribution(Distribution("dirichlet", alpha=[1, 2]), d=0)
+
+Since the Direchlet distribution is defined on an (n-1) dimensional simplex,
+the sum of the marginals is always 1. We can check this by computing:
+
+>>> (d1 + d2).sample(5, random_state=0)
+array([1., 1., 1., 1., 1.])
+>>> d2.samples_.round(3)
+array([0.559, 0.324, 0.284, 0.524, 0.599])
+
+Here is an example with a multivariate normal distribution:
+
+>>> cov = np.array([[1, 0.5], [0.5, 1]])
+>>> n1, n2 = MultivariateDistribution("multivariate_normal", mean=[1, 2], cov=cov)
+>>> n1.sample(5, random_state=0)
+array([0.72058767, 3.13703525, 2.38930155, 1.50866787, 0.77018653])
+
 Samplers
 --------
+
 The default sampling uses pseudo-random numbers. To use e.g. latin hybercube
 sampling, pass the `method` argument into `.sample()`.
 
@@ -652,7 +681,8 @@ class Distribution(AbstractDistribution):
         except AttributeError:
             # Multivariate distributions do not have .ppf()
             # isinstance(distribution, (multi_rv_generic, multi_rv_frozen))
-            return distribution(*args, **kwargs).rvs(size=len(q))
+            seed = int(q[0] * 2**20)  # Seed based on q
+            return distribution(*args, **kwargs).rvs(size=len(q), random_state=seed)
 
     def get_parents(self):
         # A distribution only has parents if it has parameters that are Nodes
@@ -994,14 +1024,17 @@ class MarginalDistribution(Node, OverloadMixin):
     def get_parents(self):
         yield self.distr
 
+    def __repr__(self):
+        return f"{type(self).__name__}({self.distr}, d={self.d})"
+
 
 def MultivariateDistribution(distr, *args, **kwargs):
     """Factory function that yields marginal distributions."""
     distr = Distribution(distr, *args, **kwargs)
 
-    # TODO: get dimensionality in a smarter way (generalize)
-    d = len(kwargs["alpha"])
-    return [MarginalDistribution(distr, d=i) for i in range(d)]
+    # Get dimensionality by sampling once
+    d = len(distr._sample(q=[0.5]).squeeze())
+    yield from (MarginalDistribution(distr, d=i) for i in range(d))
 
 
 # ========================================================
