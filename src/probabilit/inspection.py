@@ -38,3 +38,11 @@ if __name__ == "__main__":
 
     plot(a, b)
     grid = plot(a)
+
+    from probabilit.modeling import MultivariateDistribution
+
+    cov = np.array([[1, 0.9], [0.9, 1]])
+    n1, n2 = MultivariateDistribution("multivariate_normal", mean=[1, 2], cov=cov)
+    from probabilit.inspection import plot
+
+    plot(n1, n2)
