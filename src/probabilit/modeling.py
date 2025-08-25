@@ -54,7 +54,7 @@ Let us build a more compliated expression:
 
 Every unique node in this expression can be found by calling `.nodes()`:
 
->>> for node in set(expression.nodes()):
+>>> for node in sorted(set(expression.nodes()), key=lambda n:n._id):
 ...     print(node)
 Distribution("norm", loc=5, scale=1)
 Distribution("expon", scale=1)
