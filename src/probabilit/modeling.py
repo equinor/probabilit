@@ -1017,8 +1017,8 @@ class MarginalDistribution(Transform):
     >>> marginal_distr = MarginalDistribution(distr, d=0)
     >>> marginal_distr
     MarginalDistribution(Distribution("multinomial", n=10, p=[0.1, 0.2, 0.7]), d=0)
-    >>> marginal_distr.sample(5, random_state=0)
-    array([2, 1, 2, 1, 1], dtype=int32)
+    >>> marginal_distr.sample(5, random_state=0).astype(int)
+    array([2, 1, 2, 1, 1])
     """
 
     is_leaf = False
@@ -1046,12 +1046,12 @@ def MultivariateDistribution(distr, *args, **kwargs):
     --------
     >>> p = [0.2, 0.3, 0.5]  # Probability of each category
     >>> m1, m2, m3 = MultivariateDistribution("multinomial", n=10, p=p)
-    >>> m1.sample(5, random_state=0)
-    array([3, 2, 4, 2, 1], dtype=int32)
+    >>> m1.sample(5, random_state=0).astype(int)
+    array([3, 2, 4, 2, 1])
 
     Each category should sum to n=10:
-    >>> (m1 + m2 + m3).sample(5, random_state=0)
-    array([10, 10, 10, 10, 10], dtype=int32)
+    >>> (m1 + m2 + m3).sample(5, random_state=0).astype(int)
+    array([10, 10, 10, 10, 10])
     """
     distr = Distribution(distr, *args, **kwargs)
 
