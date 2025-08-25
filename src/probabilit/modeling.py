@@ -120,6 +120,7 @@ Support for multivariate distributions (MVD) is implemented, but with constraint
 
   1. MVD must be a leaf node (its arguments cannot be other distributions)
   2. its return values *must* be unpacked as marginals (slices)
+  3. only pseudo-random sampling is possible (LHS, Sobol, etc is ignored)
 
 For instance, to create a Dirichlet distribution, we must unpack it as follows:
 
@@ -1008,7 +1009,17 @@ def scalar_transform(func):
 
 
 class MarginalDistribution(Node, OverloadMixin):
-    """A maginal distribution is a 'slice' of a multivariate distribution."""
+    """A maginal distribution is a 'slice' of a multivariate distribution.
+
+    Examples
+    --------
+    >>> distr = Distribution("multinomial", n=10, p=[0.1, 0.2, 0.7])
+    >>> marginal_distr = MarginalDistribution(distr, d=0)
+    >>> marginal_distr
+    MarginalDistribution(Distribution("multinomial", n=10, p=[0.1, 0.2, 0.7]), d=0)
+    >>> marginal_distr.sample(5, random_state=0)
+    array([2, 1, 2, 1, 1], dtype=int32)
+    """
 
     is_leaf = False
 
@@ -1029,7 +1040,19 @@ class MarginalDistribution(Node, OverloadMixin):
 
 
 def MultivariateDistribution(distr, *args, **kwargs):
-    """Factory function that yields marginal distributions."""
+    """Factory function that yields marginal distributions.
+
+    Examples
+    --------
+    >>> p = [0.2, 0.3, 0.5]  # Probability of each category
+    >>> m1, m2, m3 = MultivariateDistribution("multinomial", n=10, p=p)
+    >>> m1.sample(5, random_state=0)
+    array([3, 2, 4, 2, 1], dtype=int32)
+
+    Each category should sum to n=10:
+    >>> (m1 + m2 + m3).sample(5, random_state=0)
+    array([10, 10, 10, 10, 10], dtype=int32)
+    """
     distr = Distribution(distr, *args, **kwargs)
 
     # Get dimensionality by sampling once
