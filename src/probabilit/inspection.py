@@ -33,11 +33,8 @@ def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
     if len(variables) == 2 and isinstance(corr, Number):
         corr = np.array([[1.0, corr], [corr, 1.0]])
 
-    if sample_kwargs is None:
-        sample_kwargs = dict()
-
     # Apply defaults first
-    sample_kwargs = {"size": 999, "random_state": 0} | sample_kwargs
+    sample_kwargs = {"size": 999, "random_state": 0} | (sample_kwargs or {})
 
     # Create an NoOp node, then copy the NoOp (which copies all parents too)
     # This prevents us from mutating the input arguments
