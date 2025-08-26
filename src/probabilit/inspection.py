@@ -13,7 +13,23 @@ from numbers import Number
 
 
 def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
-    """Utility function for quick plotting of one or several variables."""
+    """Utility function for quick plotting of one or several variables.
+
+    Examples
+    --------
+    >>> a = Distribution("uniform", loc=0, scale=1)
+    >>> b = Distribution("uniform", loc=0, scale=1)
+    >>> c = Distribution("uniform", loc=0, scale=1)
+
+    >>> pairgrid = plot(a)
+    >>> pairgrid = plot(a, b)
+    >>> pairgrid = plot(a, b, corr=0.5)
+
+    >>> corr = np.eye(3) / 2 + np.ones((3, 3)) / 2
+    >>> pairgrid = plot(a, b, c, corr=corr)
+
+    >>> pairgrid = plot(a, sample_kwargs={'size':99})
+    """
     if len(variables) == 2 and isinstance(corr, Number):
         corr = np.array([[1.0, corr], [corr, 1.0]])
 
