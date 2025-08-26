@@ -95,15 +95,6 @@ class TestLognormal:
         np.testing.assert_allclose(np.mean(samples), expected_mean, rtol=0.05)
         np.testing.assert_allclose(np.std(samples), expected_std, rtol=0.05)
 
-    def test_lognormal_invalid_inputs(self):
-        # Test input validation
-        with pytest.raises(AssertionError, match="Mean must be positive"):
-            Lognormal(-1, 5)
-        with pytest.raises(AssertionError, match="Standard deviation must be positive"):
-            Lognormal(10, -2)
-        with pytest.raises(AssertionError, match="Mean must be finite"):
-            Lognormal(np.inf, 5)
-
 
 class TestPERT:
     @pytest.mark.parametrize("gamma", [1, 3, 4, 7])

@@ -425,7 +425,7 @@ class Node(abc.ABC):
             # Sample all ancestors of ISNs
             ancestors = G.subgraph(nx.ancestors(G, node))
             for ancestor in nx.topological_sort(ancestors):
-                assert isinstance(ancestor, (Constant, AbstractDistribution))
+                assert isinstance(ancestor, (Constant, Transform))
                 ancestor.samples_ = ancestor._sample(size=size)
 
             # Sample the ISN
@@ -965,6 +965,10 @@ class Floor(UnaryTransform):
 
 class Ceil(UnaryTransform):
     op = np.ceil
+
+
+class Sign(UnaryTransform):
+    op = np.sign
 
 
 class ScalarFunctionTransform(Transform):
