@@ -33,7 +33,7 @@ class Lognormal(Distribution):
     def __init__(self, mean, std):
         """
         A Lognormal distribution with mean and std corresponding directly
-        to the expected value and standard deviation of the resuling lognormal.
+        to the expected value and standard deviation of the resulting lognormal.
 
         Examples
         --------
