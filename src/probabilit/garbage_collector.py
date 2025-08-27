@@ -9,10 +9,9 @@ class GarbageCollector:
     Parameters
     ----------
     strategy : None or list, optional
-        If None (the default), all nodes except the sink node are garbage
-        collected. If a list of nodes, then those nodes and the sink are not
-        garbage collected. An empty list means all nodes except the sink will
-        be garbage collected.
+        If None (the default), no nodes are garbage collected. If a list of
+        nodes, then those nodes and the sink are NOT garbage collected. An
+        empty list means all nodes except the sink will be garbage collected.
     """
 
     def __init__(self, strategy=None):
@@ -27,6 +26,9 @@ class GarbageCollector:
         if self.strategy is None:
             return self
 
+        # Initialize the reference counter, keeping track of the number of
+        # unsampled children of all nodes. Once a node has no unsampled children
+        # (i.e. all children are sampled), that node can safely be GC'ed.
         self._unsampled_children = collections.defaultdict(int)
         for node in self.sink.nodes():
             for parent in node.get_parents():

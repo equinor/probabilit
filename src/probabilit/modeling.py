@@ -537,8 +537,7 @@ class Node(abc.ABC):
             # If the reference counter reaches zero (a parent has no unsampled
             # children), then the `.samples_` attribute of the parent might
             # be deleted (only if the garbage collection strategy allows it).
-            gced = len(gc.decrement_and_delete(node))
-            print(f" GCed {gced} at {node}")
+            gc.decrement_and_delete(node)
 
         return self.samples_
 
