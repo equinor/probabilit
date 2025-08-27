@@ -204,6 +204,7 @@ import networkx as nx
 from scipy._lib._util import check_random_state
 from probabilit.correlation import nearest_correlation_matrix, ImanConover, Cholesky
 from probabilit.utils import build_corrmat, zip_args
+from probabilit.garbage_collector import GarbageCollector
 import copy
 
 
@@ -367,7 +368,12 @@ class Node(abc.ABC):
         )
 
     def sample(
-        self, size=None, random_state=None, method=None, correlator="imanconover"
+        self,
+        size=None,
+        random_state=None,
+        method=None,
+        correlator="imanconover",
+        gc_strategy=None,
     ):
         """Sample the current node and assign to all node.samples_.
 
@@ -421,9 +427,13 @@ class Node(abc.ABC):
             sampler = methods[method.lower().strip()](d=d, rng=random_state)
             quantiles = sampler.random(n=size)
 
-        return self.sample_from_quantiles(quantiles, correlator=correlator)
+        return self.sample_from_quantiles(
+            quantiles, correlator=correlator, gc_strategy=gc_strategy
+        )
 
-    def sample_from_quantiles(self, quantiles, correlator="imanconover"):
+    def sample_from_quantiles(
+        self, quantiles, correlator="imanconover", gc_strategy=None
+    ):
         """Use samples from an array of quantiles in [0, 1] to sample all
         distributions. The array must have shape (dimensionality, num_samples)."""
         assert nx.is_directed_acyclic_graph(self.to_graph())
@@ -441,6 +451,9 @@ class Node(abc.ABC):
         for node in set(self.nodes()):
             if hasattr(node, "samples_"):
                 delattr(node, "samples_")
+
+        # Set up garbage collection
+        gc = GarbageCollector(strategy=gc_strategy).set_sink(self)
 
         # Start with initial sampling nodes, which contain independent variables
         initial_sampling_nodes = set(
@@ -510,7 +523,7 @@ class Node(abc.ABC):
         # Iterate from leaf nodes and up to parent
         for node in nx.topological_sort(G):
             if hasattr(node, "samples_"):
-                continue
+                pass
             elif isinstance(node, Constant):
                 node.samples_ = node._sample(size=size)
             elif isinstance(node, AbstractDistribution):
@@ -519,6 +532,13 @@ class Node(abc.ABC):
                 node.samples_ = node._sample()
             else:
                 raise TypeError("Node must be Constant, Distribution or Transform.")
+
+            # Tell the garbage collector that we sampled this node.
+            # If the reference counter reaches zero (a parent has no unsampled
+            # children), then the `.samples_` attribute of the parent might
+            # be deleted (only if the garbage collection strategy allows it).
+            gced = len(gc.decrement_and_delete(node))
+            print(f" GCed {gced} at {node}")
 
         return self.samples_
 
