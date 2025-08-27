@@ -9,21 +9,45 @@ import seaborn
 import pandas as pd
 from probabilit.modeling import NoOp, Distribution
 import numpy as np
+from numbers import Number
 
 
-def plot(*variables, corr=None, **kwargs):
-    """Utility function for quick plotting of one or several variables."""
-    has_samples = [hasattr(var, "samples_") for var in variables]
-    if not (all(has_samples) or not any(has_samples)):
-        raise ValueError("Either all variables must be sampled or none must be.")
+def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
+    """Utility function for quick plotting of one or several variables.
 
-    if not any(has_samples):
-        # Create an NoOp node, then copy the NoOp (which copies all parents too)
-        # This prevents us from mutating the input arguments
-        no_operation = NoOp(*variables).copy()
-        variables = no_operation.parents  # Get reference back to the variables
-        no_operation.sample(size=999, random_state=42)  # Sample to populate _samples
+    Examples
+    --------
+    >>> a = Distribution("uniform", loc=0, scale=1)
+    >>> b = Distribution("uniform", loc=0, scale=1)
+    >>> c = Distribution("uniform", loc=0, scale=1)
 
+    >>> pairgrid = plot(a)
+    >>> pairgrid = plot(a, b)
+    >>> pairgrid = plot(a, b, corr=0.5)
+
+    >>> corr = np.eye(3) / 2 + np.ones((3, 3)) / 2
+    >>> pairgrid = plot(a, b, c, corr=corr)
+
+    >>> pairgrid = plot(a, sample_kwargs={'size':99})
+    """
+    if len(variables) == 2 and isinstance(corr, Number):
+        corr = np.array([[1.0, corr], [corr, 1.0]])
+
+    # Apply defaults first
+    sample_kwargs = {"size": 999, "random_state": 0} | (sample_kwargs or {})
+
+    # Create an NoOp node, then copy the NoOp (which copies all parents too)
+    # This prevents us from mutating the input arguments
+    no_operation = NoOp(*variables).copy()
+    variables = no_operation.parents  # Get reference back to the variables
+
+    # Correlate if a correlation is given
+    if corr is not None:
+        no_operation.correlate(*variables, corr_mat=corr)
+
+    no_operation.sample(**sample_kwargs)
+
+    # Transform to dataframe and return plot
     df = pd.DataFrame(
         {f"var_{i}": var.samples_ for (i, var) in enumerate(variables, 1)}
     )

@@ -1,35 +1,62 @@
 import numpy as np
 import warnings
 import scipy as sp
-from probabilit.modeling import Distribution
+from probabilit.modeling import Distribution, Log, Exp, Sign
 
 
 def Uniform(min=0, max=1):
+    """Uniform distribution on [min, max)."""
     return Distribution("uniform", loc=min, scale=max - min)
 
 
 def Normal(loc, scale):
+    """Normal distribution parametrized by mean (loc) and std (scale)."""
     return Distribution("norm", loc=loc, scale=scale)
 
 
-class Lognormal:
+def TruncatedNormal(loc, scale, low, high):
+    """A truncated Normal distribution parametrized by mean (loc) and
+    std (scale) defined on [low, high).
+
+    Examples
+    --------
+    >>> distr = TruncatedNormal(loc=0, scale=1, low=3, high=3.3)
+    >>> distr.sample(7, random_state=0).round(3)
+    array([3.13 , 3.182, 3.146, 3.129, 3.095, 3.159, 3.099])
+    """
+    # (a, b) are defined in terms of loc and scale, so transform them
+    a, b = (low - loc) / scale, (high - loc) / scale
+    return Distribution("truncnorm", a=a, b=b, loc=loc, scale=scale)
+
+
+class Lognormal(Distribution):
     def __init__(self, mean, std):
         """
-        Create a lognormal distribution with specified mean and standard deviation.
-        Parameters correspond directly to the mean and standard deviation
-        of the resulting lognormal distribution.
+        A Lognormal distribution with mean and std corresponding directly
+        to the expected value and standard deviation of the resulting lognormal.
+
+        Examples
+        --------
+        >>> samples = Lognormal(mean=2, std=1).sample(999, random_state=0)
+        >>> float(np.mean(samples))
+        2.00173...
+        >>> float(np.std(samples))
+        1.02675...
+
+        Composite distributions work too:
+
+        >>> mean = Distribution("expon", scale=1)
+        >>> Lognormal(mean=mean, std=1).sample(5, random_state=0)
+        array([0.86196529, 0.69165866, 0.41782557, 1.23340656, 2.90778578])
         """
-        assert mean > 0, f"Mean must be positive, got {mean}"
-        assert std > 0, f"Standard deviation must be positive, got {std}"
-        assert np.isfinite(mean), f"Mean must be finite, got {mean}"
-        assert np.isfinite(std), f"Standard deviation must be finite, got {std}"
+        # Transform parameters (they can be numbers, distributions, etc)
+        variance = Sign(std) * std**2  # Square it but keep the sign (so negative fails)
+        sigma_squared = Log(1 + variance / (mean**2))
+        sigma = (sigma_squared) ** (1 / 2)
+        mu = Log(mean) - sigma_squared / 2
 
-        variance = std**2
-        sigma_squared = np.log(1 + variance / (mean**2))
-        sigma = np.sqrt(sigma_squared)
-        mu = np.log(mean) - sigma_squared / 2
-
-        self.distribution = Distribution("lognorm", s=sigma, scale=np.exp(mu))
+        # Call the parent class
+        super().__init__(distr="lognorm", s=sigma, scale=Exp(mu))
 
     @classmethod
     def from_log_params(cls, mu, sigma):
@@ -38,18 +65,14 @@ class Lognormal:
         Parameters correspond to the mean and standard deviation of the
         underlying normal distribution (i.e., the parameters of log(X) where
         X is the lognormal random variable).
+
+        Examples
+        --------
+        >>> mu = Distribution("norm")
+        >>> Lognormal.from_log_params(mu=mu, sigma=1).sample(5, random_state=0)
+        array([1.99625633, 1.45244764, 1.19926216, 2.94150961, 4.47459182])
         """
-        assert np.isfinite(mu), f"Mu must be finite, got {mu}"
-        assert sigma > 0, f"Sigma must be positive, got {sigma}"
-        assert np.isfinite(sigma), f"Sigma must be finite, got {sigma}"
-
-        # Create a dummy instance and set its distribution
-        instance = cls.__new__(cls)
-        instance.distribution = Distribution("lognorm", s=sigma, scale=np.exp(mu))
-        return instance
-
-    def __getattr__(self, name):
-        return getattr(self.distribution, name)
+        return Distribution("lognorm", s=sigma, scale=Exp(mu))
 
 
 def PERT(minimum, mode, maximum, gamma=4.0):

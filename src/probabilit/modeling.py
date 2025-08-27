@@ -54,7 +54,7 @@ Let us build a more compliated expression:
 
 Every unique node in this expression can be found by calling `.nodes()`:
 
->>> for node in set(expression.nodes()):
+>>> for node in sorted(set(expression.nodes()), key=lambda n:n._id):
 ...     print(node)
 Distribution("norm", loc=5, scale=1)
 Distribution("expon", scale=1)
@@ -202,8 +202,9 @@ import abc
 import itertools
 import networkx as nx
 from scipy._lib._util import check_random_state
-from probabilit.correlation import nearest_correlation_matrix, ImanConover
+from probabilit.correlation import nearest_correlation_matrix, ImanConover, Cholesky
 from probabilit.utils import build_corrmat, zip_args
+from probabilit.garbage_collector import GarbageCollector
 import copy
 
 
@@ -366,7 +367,14 @@ class Node(abc.ABC):
             1 for node in set(self.nodes()) if isinstance(node, AbstractDistribution)
         )
 
-    def sample(self, size=None, random_state=None, method=None):
+    def sample(
+        self,
+        size=None,
+        random_state=None,
+        method=None,
+        correlator="imanconover",
+        gc_strategy=None,
+    ):
         """Sample the current node and assign to all node.samples_.
 
         Examples
@@ -378,6 +386,30 @@ class Node(abc.ABC):
         array([0.53058301, 0.83728718, 0.6154821 , 0.52480077, 0.36736566])
         >>> result.sample(size=5, random_state=0, method="lhs")
         array([1.11212876, 0.273718  , 0.03808862, 0.5702549 , 0.83779147])
+
+        Set a custom correlator by giving a Correlator type.
+        The API of a correlator is:
+
+            1. correlator = Correlator(correlation_matrix)
+            2. X_corr = correlator(X_samples)  # shape (samples, variable)
+
+        >>> from probabilit.correlation import Cholesky, ImanConover
+        >>> from scipy.stats import pearsonr
+        >>> a, b = Distribution("uniform"), Distribution("expon")
+        >>> corr_mat = np.array([[1, 0.6], [0.6, 1]])
+        >>> result = (a + b).correlate(a, b, corr_mat=corr_mat)
+
+        >>> s = result.sample(25, random_state=0, correlator=Cholesky)
+        >>> float(pearsonr(a.samples_, b.samples_).statistic)
+        0.599999...
+        >>> float(np.min(b.samples_)) # Cholesky does not preserve marginals!
+        -0.35283...
+
+        >>> s = result.sample(25, random_state=0, correlator=ImanConover)
+        >>> float(pearsonr(a.samples_, b.samples_).statistic)
+        0.617109...
+        >>> float(np.min(b.samples_)) # ImanConover does preserve marginals
+        0.062115...
         """
         size = 1 if size is None else size
         d = self.num_distribution_nodes()
@@ -395,14 +427,22 @@ class Node(abc.ABC):
             sampler = methods[method.lower().strip()](d=d, rng=random_state)
             quantiles = sampler.random(n=size)
 
-        return self.sample_from_quantiles(quantiles)
+        return self.sample_from_quantiles(
+            quantiles, correlator=correlator, gc_strategy=gc_strategy
+        )
 
-    def sample_from_quantiles(self, quantiles):
+    def sample_from_quantiles(
+        self, quantiles, correlator="imanconover", gc_strategy=None
+    ):
         """Use samples from an array of quantiles in [0, 1] to sample all
         distributions. The array must have shape (dimensionality, num_samples)."""
         assert nx.is_directed_acyclic_graph(self.to_graph())
         size, n_dim = quantiles.shape
         assert n_dim == self.num_distribution_nodes()
+
+        CORRELATOR_MAP = {"imanconover": ImanConover, "cholesky": Cholesky}
+        if isinstance(correlator, str):
+            correlator = CORRELATOR_MAP[correlator.lower()]
 
         # Prepare columns of quantiles, one column for each Distribution
         columns = iter(list(quantiles.T))
@@ -411,6 +451,9 @@ class Node(abc.ABC):
         for node in set(self.nodes()):
             if hasattr(node, "samples_"):
                 delattr(node, "samples_")
+
+        # Set up garbage collection
+        gc = GarbageCollector(strategy=gc_strategy).set_sink(self)
 
         # Start with initial sampling nodes, which contain independent variables
         initial_sampling_nodes = set(
@@ -425,7 +468,7 @@ class Node(abc.ABC):
             # Sample all ancestors of ISNs
             ancestors = G.subgraph(nx.ancestors(G, node))
             for ancestor in nx.topological_sort(ancestors):
-                assert isinstance(ancestor, (Constant, AbstractDistribution))
+                assert isinstance(ancestor, (Constant, Transform))
                 ancestor.samples_ = ancestor._sample(size=size)
 
             # Sample the ISN
@@ -468,19 +511,19 @@ class Node(abc.ABC):
             correlation_matrix = build_corrmat(correlations)
             correlation_matrix = nearest_correlation_matrix(correlation_matrix)
 
-            # TODO: allow other correlators in additon to ImanConover
-            iman_conover = ImanConover(correlation_matrix)
+            # Create an instance of the correlator
+            correlator_instance = correlator(correlation_matrix)
 
             # Concatenate samples, correlate them (shift rows in each col), then re-assign
             samples_input = np.vstack([var.samples_ for var in all_variables]).T
-            samples_ouput = iman_conover(samples_input)
+            samples_ouput = correlator_instance(samples_input)
             for var, sample in zip(all_variables, samples_ouput.T):
                 var.samples_ = np.copy(sample)
 
         # Iterate from leaf nodes and up to parent
         for node in nx.topological_sort(G):
             if hasattr(node, "samples_"):
-                continue
+                pass
             elif isinstance(node, Constant):
                 node.samples_ = node._sample(size=size)
             elif isinstance(node, AbstractDistribution):
@@ -489,6 +532,12 @@ class Node(abc.ABC):
                 node.samples_ = node._sample()
             else:
                 raise TypeError("Node must be Constant, Distribution or Transform.")
+
+            # Tell the garbage collector that we sampled this node.
+            # If the reference counter reaches zero (a parent has no unsampled
+            # children), then the `.samples_` attribute of the parent might
+            # be deleted (only if the garbage collection strategy allows it).
+            gc.decrement_and_delete(node)
 
         return self.samples_
 
@@ -965,6 +1014,10 @@ class Floor(UnaryTransform):
 
 class Ceil(UnaryTransform):
     op = np.ceil
+
+
+class Sign(UnaryTransform):
+    op = np.sign
 
 
 class ScalarFunctionTransform(Transform):

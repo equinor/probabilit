@@ -305,6 +305,23 @@ def test_that_an_empirical_distribution_can_be_a_parameter():
     (result**2).sample(99, random_state=42)
 
 
+def test_that_distribution_params_with_transforms():
+    # Plain old numbers work as arguments without raising any errors
+    loc = 2
+    samples1 = Distribution("norm", loc=loc).sample(99, random_state=0)
+
+    # The same number wrapped in constant
+    loc = Constant(2)
+    samples2 = Distribution("norm", loc=loc).sample(99, random_state=0)
+
+    # A more complex expression: loc = 0 + sqrt(9) - Log(2) = 0 + 3 - 1 = 2
+    loc = Constant(0) + (Constant(9) ** 0.5) - Log(2.718281828459045)
+    samples3 = Distribution("norm", loc=loc).sample(99, random_state=0)
+
+    np.testing.assert_allclose(samples1, samples2)
+    np.testing.assert_allclose(samples1, samples3)
+
+
 if __name__ == "__main__":
     import pytest
 
