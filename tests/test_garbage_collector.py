@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 27 10:57:25 2025
-
-@author: TODL
-"""
-
 from probabilit.modeling import Distribution, Constant, Log
 
 
