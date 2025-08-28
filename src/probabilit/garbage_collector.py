@@ -1,4 +1,5 @@
 import collections
+from collections.abc import Collection
 
 
 class GarbageCollector:
@@ -15,7 +16,9 @@ class GarbageCollector:
     """
 
     def __init__(self, strategy=None):
-        assert strategy is None or isinstance(strategy, list)
+        if not (strategy is None or isinstance(strategy, Collection)):
+            raise TypeError(f"`strategy` must be None or a collection, got: {strategy}")
+
         self.strategy = strategy
 
     def set_sink(self, sink):

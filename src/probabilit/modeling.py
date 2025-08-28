@@ -26,6 +26,10 @@ normal distribution as given in `scipy.stats`, and the arguments to the
 distribution must match those given by `scipy.stats.norm` (here `loc` and
 `scale`).
 
+
+Composite distributions
+-----------------------
+
 Here is another example demonstrating composite distributions, where an
 argument to one distribution is another distribution:
 
@@ -34,6 +38,10 @@ argument to one distribution is another distribution:
 >>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
 >>> survived.sample(9, random_state=rng)
 array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
+
+
+The modeling language
+---------------------
 
 To understand and examine the modeling language, we can perform  computations
 using constants. The computational graph carries out arithmetic operations
@@ -114,6 +122,23 @@ array([212.45401188, 290.14286128, 248.19939418, 234.86584842,
        200.        , 200.        , 200.        , 273.23522915,
        235.11150117])
 
+
+Correlations
+------------
+To correlate samples, use the `.correlate()` method on any node that is a
+descendant of the nodes you wish to correlate:
+
+>>> from scipy.stats import pearsonr
+>>> a, b = Distribution("uniform"), Distribution("expon")
+>>> corr_mat = np.array([[1, 0.5], [0.5, 1]])
+>>> s = (a + b).correlate(a, b, corr_mat=corr_mat).sample(99, random_state=0)
+
+Check that we get a correlation close to the desired value of 0.5:
+
+>>> float(pearsonr(a.samples_, b.samples_).statistic)
+0.42817...
+
+
 Multivariate distributions
 --------------------------
 Support for multivariate distributions (MVD) is implemented, but with constraints:
@@ -145,6 +170,7 @@ array([0.72058767, 3.13703525, 2.38930155, 1.50866787, 0.77018653])
 >>> (n1 + n2).sample(5, random_state=0)
 array([2.52848604, 5.31650094, 5.20076878, 4.06217341, 1.40748585])
 
+
 Samplers
 --------
 
@@ -165,6 +191,36 @@ To retain more control, use the `sample_from_quantiles` method directly instead:
 >>> hypercube_samples = hypercube.random(5) # Draw 5 samples
 >>> expression.sample_from_quantiles(hypercube_samples)
 array([ 7.80785741,  3.72416016,  3.77849849, -3.83561905, 38.02479019])
+
+
+Garbage collection
+------------------
+By default the `.samples_` attribute is set on each ancestor when sampling.
+This can cause some memory overhead in large graphs. A garbage collection
+strategy can be set to keep the memory constrained:
+
+>>> a = Distribution("norm")
+>>> intermediate_result = (a + a)**2 - a
+>>> final_result = Exp(intermediate_result)
+>>> final_result.sample(3, random_state=42, gc_strategy=[]).round(3)
+array([2.0730000e+00, 1.0532374e+04, 2.4920000e+00])
+
+Setting `gc_strategy=[]` removes `.samples_` on all nodes except the final node:
+
+>>> hasattr(a, "samples_")
+False
+>>> hasattr(intermediate_result, "samples_")
+False
+
+To keep intermediate results on some nodes, pass them into `gc_strategy`:
+
+>>> final_result.sample(3, random_state=42, gc_strategy=[a]).round(3)
+array([2.0730000e+00, 1.0532374e+04, 2.4920000e+00])
+>>> hasattr(a, "samples_")
+True
+>>> hasattr(intermediate_result, "samples_")
+False
+
 
 Functions
 ---------
@@ -440,6 +496,7 @@ class Node(abc.ABC):
         size, n_dim = quantiles.shape
         assert n_dim == self.num_distribution_nodes()
 
+        # Get the correct corrlator class based on strings
         CORRELATOR_MAP = {"imanconover": ImanConover, "cholesky": Cholesky}
         if isinstance(correlator, str):
             correlator = CORRELATOR_MAP[correlator.lower()]
@@ -522,16 +579,18 @@ class Node(abc.ABC):
 
         # Iterate from leaf nodes and up to parent
         for node in nx.topological_sort(G):
-            if hasattr(node, "samples_"):
+            if hasattr(node, "samples_"):  # Skip if samples alrady exists
                 pass
             elif isinstance(node, Constant):
-                node.samples_ = node._sample(size=size)
+                node.samples_ = node._sample(size=size)  # Draw constants
             elif isinstance(node, AbstractDistribution):
-                node.samples_ = node._sample(q=next(columns))
+                node.samples_ = node._sample(q=next(columns))  # Sample distr
             elif isinstance(node, Transform):
-                node.samples_ = node._sample()
+                node.samples_ = node._sample()  # Propagate through transform
             else:
-                raise TypeError("Node must be Constant, Distribution or Transform.")
+                raise TypeError(
+                    "Node must be Constant, AbstractDistribution or Transform."
+                )
 
             # Tell the garbage collector that we sampled this node.
             # If the reference counter reaches zero (a parent has no unsampled
