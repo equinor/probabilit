@@ -9,6 +9,7 @@ from probabilit.modeling import (
     MultivariateDistribution,
 )
 from probabilit.distributions import PERT
+from probabilit.inspection import plot
 
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "scalar_transform",
     "MultivariateDistribution",
     "PERT",
+    "plot",
 ]
