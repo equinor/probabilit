@@ -273,7 +273,10 @@ def python_to_prob(argument):
     """Convert basic Python types to probabilit types."""
     if isinstance(argument, numbers.Number):
         return Constant(argument)
-    return argument
+    elif isinstance(argument, Node):
+        return argument
+    else:
+        raise ValueError("Type not compatible with probabilit: {argument}")
 
 
 # =============================================================================
@@ -339,6 +342,8 @@ class Node(abc.ABC):
         self._correlations = []
 
     def __eq__(self, other):
+        if not isinstance(other, Node):
+            return NotImplemented
         # Needed for set() to work on Node. Equality in models must use Equal()
         return self._id == other._id
 
@@ -640,7 +645,10 @@ class Node(abc.ABC):
         assert corr_mat.shape[0] == len(variables)
         assert len(variables) == len(set(variables))
         nodes = set(self.nodes())
-        assert all(var in nodes for var in variables)
+        for var in variables:
+            if var not in nodes:
+                raise ValueError(f"{var} is not an ancestor of {self}")
+
         self._correlations.append((list(variables), np.copy(corr_mat)))
         return self
 
