@@ -574,7 +574,7 @@ class Node(abc.ABC):
             correlation_matrix = nearest_correlation_matrix(correlation_matrix)
 
             # Create an instance of the correlator
-            correlator_instance = correlator(correlation_matrix)
+            correlator_instance = correlator().set_target(correlation_matrix)
 
             # Concatenate samples, correlate them (shift rows in each col), then re-assign
             samples_input = np.vstack([var.samples_ for var in all_variables]).T

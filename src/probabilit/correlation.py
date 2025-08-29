@@ -24,7 +24,7 @@ Induce correlations
 >>> float(sp.stats.pearsonr(*X.T).statistic)
 0.065898...
 >>> correlation_matrix = np.array([[1, 0.3], [0.3, 1]])
->>> transform = ImanConover(correlation_matrix)
+>>> transform = ImanConover().set_target(correlation_matrix)
 >>> X_transformed = transform(X)
 >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
 0.279652...
@@ -36,6 +36,7 @@ import abc
 
 import contextlib
 import os
+import itertools
 
 # CVXPY prints error messages about incompatible ortools version during import.
 # Since we use the SCS solver and not GLOP/PDLP (which need ortools), these errors
@@ -48,6 +49,10 @@ with (
     contextlib.redirect_stderr(devnull),
 ):
     import cvxpy as cp
+
+
+class CorrelatorError(Exception):
+    pass
 
 
 def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False):
@@ -153,7 +158,8 @@ def _is_positive_definite(X):
 
 
 class Correlator(abc.ABC):
-    def __init__(self, correlation_matrix):
+    def set_target(self, correlation_matrix):
+        """Set target correlation matrix."""
         if not isinstance(correlation_matrix, np.ndarray):
             raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
         if not correlation_matrix.ndim == 2:
@@ -169,9 +175,12 @@ class Correlator(abc.ABC):
 
         self.C = correlation_matrix.copy()
         self.P = np.linalg.cholesky(self.C)
+        return self
 
     def _validate_X(self, X):
         """Validate array X of shape (observations, variables)."""
+        if not (hasattr(self, "C") and hasattr(self, "P")):
+            raise CorrelatorError("User must call `set_target` first.")
 
         if not isinstance(X, np.ndarray):
             raise TypeError("Input argument `X` must be NumPy array.")
@@ -193,42 +202,44 @@ class Correlator(abc.ABC):
 
 
 class Cholesky(Correlator):
-    def __init__(self, correlation_matrix):
-        """Create a Cholesky transform.
+    """Create a Cholesky transform.
 
-        Parameters
-        ----------
-        correlation_matrix : ndarray
-            Target correlation matrix of shape (K, K). The Iman-Conover will
-            try to induce a correlation on the data set X so that corr(X) is
-            as close to `correlation_matrix` as possible.
+    Parameters
+    ----------
+    correlation_matrix : ndarray
+        Target correlation matrix of shape (K, K). The Iman-Conover will
+        try to induce a correlation on the data set X so that corr(X) is
+        as close to `correlation_matrix` as possible.
 
-        Examples
-        --------
-        Create a desired correction of 0.7 and a data set X with no correlation.
-        >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
-        >>> rng = np.random.default_rng(4)
-        >>> X = rng.normal(size=(9, 2))
-        >>> sp.stats.pearsonr(*X.T).statistic.round(6)
-        np.float64(-0.025582)
+    Examples
+    --------
+    Create a desired correction of 0.7 and a data set X with no correlation.
+    >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
+    >>> rng = np.random.default_rng(4)
+    >>> X = rng.normal(size=(9, 2))
+    >>> sp.stats.pearsonr(*X.T).statistic.round(6)
+    np.float64(-0.025582)
 
-        >>> transform = Cholesky(correlation_matrix)
-        >>> X_transformed = transform(X)
-        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
-        np.float64(0.7)
+    >>> transform = Cholesky().set_target(correlation_matrix)
+    >>> X_transformed = transform(X)
+    >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+    np.float64(0.7)
 
-        Verify that mean and std is the same before and after:
-        >>> np.mean(X, axis=0)
-        array([-0.63531692,  0.70114825])
-        >>> np.mean(X_transformed, axis=0)
-        array([-0.63531692,  0.70114825])
-        >>> np.std(X, axis=0)
-        array([1.11972638, 0.75668173])
-        >>> np.std(X_transformed, axis=0)
-        array([1.11972638, 0.75668173])
+    Verify that mean and std is the same before and after:
+    >>> np.mean(X, axis=0)
+    array([-0.63531692,  0.70114825])
+    >>> np.mean(X_transformed, axis=0)
+    array([-0.63531692,  0.70114825])
+    >>> np.std(X, axis=0)
+    array([1.11972638, 0.75668173])
+    >>> np.std(X_transformed, axis=0)
+    array([1.11972638, 0.75668173])
 
-        """
-        super().__init__(correlation_matrix)
+    """
+
+    def set_target(self, correlation_matrix):
+        super().set_target(correlation_matrix)
+        return self
 
     def __call__(self, X):
         """Transform an input matrix X.
@@ -274,82 +285,84 @@ class Cholesky(Correlator):
 
 
 class ImanConover(Correlator):
-    def __init__(self, correlation_matrix):
-        """Create an Iman-Conover transform.
+    """Create an Iman-Conover transform.
 
-        Parameters
-        ----------
-        correlation_matrix : ndarray
-            Target correlation matrix of shape (K, K). The Iman-Conover will
-            try to induce a correlation on the data set X so that corr(X) is
-            as close to `correlation_matrix` as possible.
+    Parameters
+    ----------
+    correlation_matrix : ndarray
+        Target correlation matrix of shape (K, K). The Iman-Conover will
+        try to induce a correlation on the data set X so that corr(X) is
+        as close to `correlation_matrix` as possible.
 
-        Notes
-        -----
-        The implementation follows the original paper:
-        Iman, R. L., & Conover, W. J. (1982). A distribution-free approach to
-        inducing rank correlation among input variables. Communications in
-        Statistics - Simulation and Computation, 11(3), 311-334.
-        https://www.tandfonline.com/doi/epdf/10.1080/03610918208812265?needAccess=true
-        https://www.uio.no/studier/emner/matnat/math/STK4400/v05/undervisningsmateriale/A%20distribution-free%20approach%20to%20rank%20correlation.pdf
+    Notes
+    -----
+    The implementation follows the original paper:
+    Iman, R. L., & Conover, W. J. (1982). A distribution-free approach to
+    inducing rank correlation among input variables. Communications in
+    Statistics - Simulation and Computation, 11(3), 311-334.
+    https://www.tandfonline.com/doi/epdf/10.1080/03610918208812265?needAccess=true
+    https://www.uio.no/studier/emner/matnat/math/STK4400/v05/undervisningsmateriale/A%20distribution-free%20approach%20to%20rank%20correlation.pdf
 
-        Other useful sources:
-        - https://blogs.sas.com/content/iml/2021/06/16/geometry-iman-conover-transformation.html
-        - https://blogs.sas.com/content/iml/2021/06/14/simulate-iman-conover-transformation.html
-        - https://aggregate.readthedocs.io/en/stable/5_technical_guides/5_x_iman_conover.html
+    Other useful sources:
+    - https://blogs.sas.com/content/iml/2021/06/16/geometry-iman-conover-transformation.html
+    - https://blogs.sas.com/content/iml/2021/06/14/simulate-iman-conover-transformation.html
+    - https://aggregate.readthedocs.io/en/stable/5_technical_guides/5_x_iman_conover.html
 
-        Examples
-        --------
-        Create a desired correction of 0.7 and a data set X with no correlation.
-        >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
-        >>> transform = ImanConover(correlation_matrix)
-        >>> X = np.array([[0, 0  ],
-        ...               [0, 0.5],
-        ...               [0,  1 ],
-        ...               [1, 0  ],
-        ...               [1, 0.5],
-        ...               [1, 1  ]])
-        >>> X_transformed = transform(X)
-        >>> X_transformed
-        array([[0. , 0. ],
-               [0. , 0. ],
-               [0. , 0.5],
-               [1. , 0.5],
-               [1. , 1. ],
-               [1. , 1. ]])
+    Examples
+    --------
+    Create a desired correction of 0.7 and a data set X with no correlation.
+    >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
+    >>> transform = ImanConover().set_target(correlation_matrix)
+    >>> X = np.array([[0, 0  ],
+    ...               [0, 0.5],
+    ...               [0,  1 ],
+    ...               [1, 0  ],
+    ...               [1, 0.5],
+    ...               [1, 1  ]])
+    >>> X_transformed = transform(X)
+    >>> X_transformed
+    array([[0. , 0. ],
+           [0. , 0. ],
+           [0. , 0.5],
+           [1. , 0.5],
+           [1. , 1. ],
+           [1. , 1. ]])
 
-        The original data X has no correlation at all, while the transformed
-        data has correlation that is closer to the desired correlation structure:
+    The original data X has no correlation at all, while the transformed
+    data has correlation that is closer to the desired correlation structure:
 
-        >>> sp.stats.pearsonr(*X.T).statistic.round(6)
-        np.float64(0.0)
-        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
-        np.float64(0.816497)
+    >>> sp.stats.pearsonr(*X.T).statistic.round(6)
+    np.float64(0.0)
+    >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+    np.float64(0.816497)
 
-        Achieving the exact correlation structure might be impossible. For the
-        input matrix above, there is no permutation of the columns that yields
-        the exact desired correlation of 0.7. Iman-Conover is a heuristic that
-        tries to get as close as possible.
+    Achieving the exact correlation structure might be impossible. For the
+    input matrix above, there is no permutation of the columns that yields
+    the exact desired correlation of 0.7. Iman-Conover is a heuristic that
+    tries to get as close as possible.
 
-        With many samples, we get good results if the data are normal:
+    With many samples, we get good results if the data are normal:
 
-        >>> rng = np.random.default_rng(42)
-        >>> X = rng.normal(size=(1000, 2))
-        >>> X_transformed = transform(X)
-        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
-        np.float64(0.697701)
+    >>> rng = np.random.default_rng(42)
+    >>> X = rng.normal(size=(1000, 2))
+    >>> X_transformed = transform(X)
+    >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+    np.float64(0.697701)
 
-        But if the data are far from normal (here:lognormal), the results are
-        not as good. This is because correlation is induced in a normal space
-        before the result is mapped back to the original marginal distributions.
+    But if the data are far from normal (here:lognormal), the results are
+    not as good. This is because correlation is induced in a normal space
+    before the result is mapped back to the original marginal distributions.
 
-        >>> rng = np.random.default_rng(42)
-        >>> X = rng.lognormal(size=(1000, 2))
-        >>> X_transformed = transform(X)
-        >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
-        np.float64(0.592541)
-        """
-        super().__init__(correlation_matrix)
+    >>> rng = np.random.default_rng(42)
+    >>> X = rng.lognormal(size=(1000, 2))
+    >>> X_transformed = transform(X)
+    >>> sp.stats.pearsonr(*X_transformed.T).statistic.round(6)
+    np.float64(0.592541)
+    """
+
+    def set_target(self, correlation_matrix):
+        super().set_target(correlation_matrix)
+        return self
 
     def __call__(self, X):
         """Transform an input matrix X.
@@ -411,6 +424,324 @@ class ImanConover(Correlator):
         return result
 
 
+class PermutationCorrelator(Correlator):
+    def __init__(
+        self,
+        *,
+        weights=None,
+        iterations=1000,
+        max_iter_no_change=250,
+        correlation_type="pearson",
+        seed=None,
+        verbose=False,
+    ):
+        """Create a PermutationCorrelator instance, which induces correlations
+        between variables in X by randomly shuffling rows within each column.
+
+        Parameters
+        ----------
+        weights : 2d numpy array or None, optional
+            Elementwise weights for the target correlation matrix.
+            The default is None, which corresponds to uniform weights.
+        iterations : int, optional
+            Maximal number of iterations to run. Each iterations consists of
+            one loop over all variables. Choosing 0 means infinite iterations.
+            The default is 1000.
+        max_iter_no_change : int, optional
+            Maximal number of iterations without any improvement in the
+            objective before terminating. The default is 250.
+        correlation_type : str, optional
+            Either "pearson" or "spearman". The default is "pearson".
+        seed : int or None, optional
+            A seed for the random number generator. The default is None.
+        verbose : bool, optional
+            Whether or not to print information. The default is False.
+
+        Notes
+        -----
+        The paper "Correlation control in small-sample Monte Carlo type
+        simulations I: A simulated annealing approach" by Vořechovský et al.
+        proposes using simulated annealing. We implement a simple randomized
+        hill climbing procedure instead, because it is good enough.
+          - https://www.sciencedirect.com/science/article/pii/S0266892009000113
+          - https://en.wikipedia.org/wiki/Hill_climbing
+
+        Examples
+        --------
+        >>> rng = np.random.default_rng(42)
+        >>> X = rng.normal(size=(100, 2))
+        >>> float(sp.stats.pearsonr(*X.T).statistic)
+        0.1573...
+        >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
+        >>> perm_trans = PermutationCorrelator(seed=0).set_target(correlation_matrix)
+        >>> X_transformed = perm_trans.hill_climb(X)
+        >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
+        0.6999...
+
+        For large matrices, it often makes sense to first use Iman-Conover
+        to get a good initial solution, then give it to PermutationCorrelator.
+        Start by creating a large correlation matrix:
+
+        >>> variables = 25
+        >>> correlation_matrix = np.ones((variables, variables)) * 0.7
+        >>> np.fill_diagonal(correlation_matrix, 1.0)
+        >>> perm_trans = PermutationCorrelator(iterations=1000,
+        ...                                    max_iter_no_change=250,
+        ...                                    seed=0, verbose=True)
+        >>> perm_trans = perm_trans.set_target(correlation_matrix)
+
+        Create data X, then transform using Iman-Conover:
+
+        >>> X = rng.normal(size=(10 * variables, variables))
+        >>> perm_trans._error(X) # Initial error
+        0.4846...
+        >>> ic_trans = ImanConover().set_target(correlation_matrix)
+        >>> X_ic = ic_trans(X)
+        >>> perm_trans._error(X_ic) # Error after Iman-Conover
+        0.0071...
+        >>> X_ic_pc = perm_trans.hill_climb(X_ic)
+        Running permutation correlator for 1000 iterations.
+         Iteration 100  Error: 0.0037
+         Iteration 200  Error: 0.0024
+         Iteration 300  Error: 0.0017
+         Iteration 400  Error: 0.0014
+         Iteration 500  Error: 0.0012
+         Iteration 600  Error: 0.0010
+         Iteration 700  Error: 0.0008
+         Iteration 800  Error: 0.0007
+         Iteration 900  Error: 0.0006
+         Terminating at iteration 940.
+         No improvement for 250 iterations. Error: 0.0006
+        >>> perm_trans._error(X_ic_pc) # Error after Iman-Conover + permutation
+        0.0006119...
+        """
+        corr_types = {"pearson": self._pearson, "spearman": self._spearman}
+
+        if not (weights is None or np.all(weights > 0)):
+            raise ValueError("`weights` must have positive entries.")
+        if not isinstance(iterations, int) and iterations >= 0:
+            raise ValueError("`iterations` must be non-negative integer.")
+        if not isinstance(max_iter_no_change, int) and max_iter_no_change >= 0:
+            raise ValueError("`max_iter_no_change` must be non-negative integer.")
+        if iterations == 0 and max_iter_no_change == 0:
+            raise ValueError("`iterations` or `max_iter_no_change` must be positive.")
+        if not (isinstance(correlation_type, str) and correlation_type in corr_types):
+            raise ValueError(
+                f"`correlation_type` must be one of: {tuple(corr_types.keys())}"
+            )
+        if not (seed is None or isinstance(seed, int)):
+            raise TypeError("`seed` must be None or an integer")
+        if not isinstance(verbose, bool):
+            raise TypeError("`verbose` must be boolean")
+
+        self.iters = iterations
+        self.max_iter_no_change = max_iter_no_change
+        self.correlation_func = corr_types[correlation_type]
+        self.rng = np.random.default_rng(seed)
+        self.verbose = verbose
+
+    def set_target(self, correlation_matrix, *, weights=None):
+        """Set the target correlation matrix."""
+        super().set_target(correlation_matrix)
+        weights = np.ones_like(self.C) if weights is None else weights
+        self.weights = weights / np.sum(weights)
+        self.triu_indices = np.triu_indices(self.C.shape[0], k=1)
+        return self
+
+    def _pearson(self, X):
+        """Given a matrix X of shape (m, n), return a matrix of shape (n, n)
+        with Pearson correlation coefficients."""
+        # The majority of runtime is spent computing correlation coefficients.
+        # Any attempt to speed up this code should focus on that.
+        # It's possible to compute the difference is the objective function
+        # without explicitly computing the empirical correlation afresh in
+        # every iteration. If X has shape (m, n), then this can take the
+        # runtime from O(m*n*n) to O(n), but it requires Python-loops and
+        # bookkeeping.
+        return np.corrcoef(X, rowvar=False)
+
+    def _spearman(self, X):
+        """Given a matrix X of shape (m, n), return a matrix of shape (n, n)
+        with Spearman correlation coefficients."""
+        if X.shape[1] == 2:
+            spearman_corr = sp.stats.spearmanr(X).statistic
+            return np.array([[1.0, spearman_corr], [spearman_corr, 1.0]])
+        else:
+            return sp.stats.spearmanr(X).statistic
+
+    @staticmethod
+    def _swap(X, i, j, k):
+        """Swap rows i and j in column k inplace."""
+        X[i, k], X[j, k] = X[j, k], X[i, k]
+
+    def _error(self, X):
+        """Compute RMSE over upper triangular part of corr(X) - C."""
+        corr = self.correlation_func(X)  # Correlation matrix
+        idx = self.triu_indices  # Get upper triangular indices (ignore diag)
+        weighted_residuals_sq = self.weights[idx] * (corr[idx] - self.C[idx]) ** 2.0
+        return float(np.sqrt(np.sum(weighted_residuals_sq)))
+
+    def hill_climb(self, X):
+        """Hill climbing cycles through columns (variables), and for each
+        column it swaps two random rows (observations). If the result
+        leads to a smaller error (correlation closer to target), then it is
+        kept. If not we try again.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            A matrix with shape (observations, variables).
+
+        Returns
+        -------
+        A copy of X where rows within each column are shuffled.
+        """
+        self._validate_X(X)
+
+        num_obs, num_vars = X.shape
+        if not (isinstance(X, np.ndarray) and X.ndim == 2):
+            raise ValueError("`X` must be a 2D numpy array.")
+        if not num_vars == self.C.shape[0]:
+            raise ValueError(
+                "Number of variables in `X` does not match `correlation_matrix`."
+            )
+
+        if self.verbose:
+            print(f"Running permutation correlator for {self.iters} iterations.")
+
+        # Set up loop generator
+        iters = range(1, self.iters + 1) if self.iters else itertools.count(1)
+        loop_gen = itertools.product(iters, range(num_vars))  # (iteration, k)
+
+        # Set up variables that are tracked in the main loop
+        current_X = X.copy()
+        current_error = self._error(current_X)
+        iter_no_change = 0
+
+        # Main loop. For each iteration, k cycles through all variables
+        for iteration, k in loop_gen:
+            print_iter = iteration % (self.iters // 10) if self.iters else 1000
+            if self.verbose and print_iter == 0 and k == 0:
+                print(f" Iteration {iteration}  Error: {current_error:.4f}")
+
+            # Choose a random variable and two random observations
+            # Using rng.integers() is faster than rng.choice(replace=False)
+            i, j = self.rng.integers(0, high=num_obs, size=2)
+            if i == j:
+                continue
+
+            # Turn current_X into a new proposed X by swapping two observations
+            # i and j in column (variable) k.
+            self._swap(current_X, i, j, k)
+            proposed_error = self._error(current_X)
+
+            # The proposed X was better
+            if proposed_error < current_error:
+                current_error = proposed_error
+                iter_no_change = 0
+
+            # The proposed X was worse
+            else:
+                self._swap(current_X, i, j, k)  # Swap indices back
+                iter_no_change += 1
+
+            # Termination condition triggered
+            if self.max_iter_no_change and (iter_no_change >= self.max_iter_no_change):
+                if self.verbose:
+                    print(f""" Terminating at iteration {iteration}.
+ No improvement for {iter_no_change} iterations. Error: {current_error:.4f}""")
+                break
+
+        return current_X
+
+    def anneal(self, X):
+        """Hill climbing cycles through columns (variables), and for each
+        column it swaps two random rows (observations). If the result
+        leads to a smaller error (correlation closer to target), then it is
+        kept. If not we try again.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            A matrix with shape (observations, variables).
+
+        Returns
+        -------
+        A copy of X where rows within each column are shuffled.
+        """
+        self._validate_X(X)
+
+        num_obs, num_vars = X.shape
+        if not (isinstance(X, np.ndarray) and X.ndim == 2):
+            raise ValueError("`X` must be a 2D numpy array.")
+        if not num_vars == self.C.shape[0]:
+            raise ValueError(
+                "Number of variables in `X` does not match `correlation_matrix`."
+            )
+
+        if self.verbose:
+            print(f"Running permutation correlator for {self.iters} iterations.")
+
+        def subiters(n, base=1):
+            """Create a list with exponential decay, e.g. [4, 3, 2, 2, 1, 1, 1, 1]."""
+            if n == 1:
+                return [base]
+            return subiters(n - (n // 2), base=base + 1) + [base] * (n // 2)
+
+        # Set up loop generator
+        iters = range(1, self.iters + 1) if self.iters else itertools.count(1)
+        loop_gen = itertools.product(iters, range(num_vars))  # (iteration, k)
+
+        # Set up variables that are tracked in the main loop
+        current_X = X.copy()
+        current_error = self._error(current_X)
+        iter_no_change = 0
+
+        subiters = subiters(self.iters if self.iters else 10_000)
+
+        # Main loop. For each iteration, k cycles through all variables
+        for iteration, k in loop_gen:
+            print_iter = iteration % (self.iters // 10) if self.iters else 1000
+            if self.verbose and print_iter == 0 and k == 0:
+                print(
+                    f" Iteration {iteration}  Error: {current_error:.4f} Swap sequence: {subiters[iteration - 1]}"
+                )
+
+            sub_iterations = subiters[iteration - 1]
+            swaps = rng.integers(0, high=num_obs, size=(sub_iterations, 2))
+            for i, j in swaps:
+                if i == j:
+                    continue
+
+                # Turn current_X into a new proposed X by swapping two observations
+                # i and j in column (variable) k.
+                self._swap(current_X, i, j, k)
+
+            proposed_error = self._error(current_X)
+
+            # The proposed X was better
+            if proposed_error < current_error:
+                current_error = proposed_error
+                iter_no_change = 0
+
+            # The proposed X was worse
+            else:
+                for i, j in reversed(swaps):
+                    if i == j:
+                        continue
+                    self._swap(current_X, i, j, k)  # Swap indices back
+                iter_no_change += 1
+
+            # Termination condition triggered
+            if self.max_iter_no_change and (iter_no_change >= self.max_iter_no_change):
+                if self.verbose:
+                    print(f""" Terminating at iteration {iteration}.
+ No improvement for {iter_no_change} iterations. Error: {current_error:.4f}""")
+                break
+
+        return current_X
+
+
 def decorrelate(X, remove_variance=True):
     """Removes correlations or covariance from data X.
 
@@ -464,5 +795,66 @@ def decorrelate(X, remove_variance=True):
 
 if __name__ == "__main__":
     import pytest
+    import matplotlib.pyplot as plt
 
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
+    # pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
+
+    rng = np.random.default_rng(2)
+    p = 2
+    n = 999
+
+    sampler = sp.stats.qmc.Halton(d=p, seed=42, scramble=False)
+    samples = sampler.random(n=n)
+    samples = np.vstack(
+        [rng.permutation(np.linspace(0 + 1e-6, 1 - 1e-6, num=n)) for k in range(p)]
+    ).T
+
+    X = np.zeros_like(samples)
+    for j in range(X.shape[1]):
+        func_i = int(rng.integers(0, 4))
+        func = [
+            sp.stats.uniform(),
+            sp.stats.expon(),
+            sp.stats.norm(),
+            sp.stats.lognorm(s=1),
+        ]
+        func = func[func_i]
+        # func = sp.stats.uniform()
+        X[:, j] = func.ppf(samples[:, j]) * rng.normal(loc=5, scale=2)
+
+    plt.figure(figsize=(4, 4))
+    plt.title("Original data set")
+    plt.scatter(X[:, 0], X[:, 1], s=1)
+    plt.show()
+
+    target = np.ones((p, p)) * 0.5
+    np.fill_diagonal(target, 1.0)
+
+    # Create permutation correlator
+    correlator = PermutationCorrelator(
+        verbose=True, iterations=10_000, max_iter_no_change=100_000
+    )
+    correlator.set_target(target)
+
+    # First try cholesky and
+    X_chol = Cholesky().set_target(target)(X)
+    print(f"Cholesky error: {correlator._error(X_chol)}")
+    plt.figure(figsize=(4, 4))
+    plt.title(f"Cholesky error: {correlator._error(X_chol)}")
+    plt.scatter(X_chol[:, 0], X_chol[:, 1], s=1)
+    plt.show()
+
+    # First try cholesky and
+    X_ic = ImanConover().set_target(target)(X)
+    print(f"ImanConover error: {correlator._error(X_ic)}")
+    plt.figure(figsize=(4, 4))
+    plt.title(f"ImanConover error: {correlator._error(X_ic)}")
+    plt.scatter(X_ic[:, 0], X_ic[:, 1], s=1)
+    plt.show()
+
+    X_pc = correlator.anneal(X)
+    print(f"PermutationCorrelator error: {correlator._error(X_pc)}")
+    plt.figure(figsize=(4, 4))
+    plt.title(f"PermutationCorrelator error: {correlator._error(X_pc)}")
+    plt.scatter(X_pc[:, 0], X_pc[:, 1], s=1)
+    plt.show()
