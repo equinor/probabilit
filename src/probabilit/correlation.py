@@ -474,7 +474,7 @@ class PermutationCorrelator(Correlator):
         0.1573...
         >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
         >>> perm_trans = PermutationCorrelator(seed=0).set_target(correlation_matrix)
-        >>> X_transformed = perm_trans.hill_climb(X)
+        >>> X_transformed = perm_trans(X)
         >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
         0.6999...
 
