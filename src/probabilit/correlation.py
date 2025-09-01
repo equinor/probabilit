@@ -476,7 +476,7 @@ class PermutationCorrelator(Correlator):
         >>> perm_trans = PermutationCorrelator(seed=0).set_target(correlation_matrix)
         >>> X_transformed = perm_trans(X)
         >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
-        0.6999...
+        0.7000...
 
         For large matrices, it often makes sense to first use Iman-Conover
         to get a good initial solution, then give it to PermutationCorrelator.
@@ -501,19 +501,19 @@ class PermutationCorrelator(Correlator):
         0.0071...
         >>> X_ic_pc = perm_trans(X_ic)
         Running permutation correlator for 1000 iterations.
-         Iteration 100  Error: 0.0037
-         Iteration 200  Error: 0.0024
-         Iteration 300  Error: 0.0017
-         Iteration 400  Error: 0.0014
-         Iteration 500  Error: 0.0012
-         Iteration 600  Error: 0.0010
-         Iteration 700  Error: 0.0008
-         Iteration 800  Error: 0.0007
-         Iteration 900  Error: 0.0006
-         Terminating at iteration 940.
-         No improvement for 250 iterations. Error: 0.0006
+         Iter    100  Error: 0.0071 Swaps:  7
+         Iter    200  Error: 0.0068 Swaps:  5
+         Iter    300  Error: 0.0059 Swaps:  3
+         Iter    400  Error: 0.0045 Swaps:  2
+         Iter    500  Error: 0.0035 Swaps:  1
+         Iter    600  Error: 0.0023 Swaps:  1
+         Iter    700  Error: 0.0017 Swaps:  1
+         Iter    800  Error: 0.0013 Swaps:  1
+         Iter    900  Error: 0.0011 Swaps:  1
+         Iter   1000  Error: 0.0010 Swaps:  1
+
         >>> perm_trans._error(X_ic_pc) # Error after Iman-Conover + permutation
-        0.0006119...
+        0.0009511...
         """
         corr_types = {"pearson": self._pearson, "spearman": self._spearman}
 
@@ -647,7 +647,7 @@ class PermutationCorrelator(Correlator):
             num_swaps = subiters(n=self.iters if self.iters else 10_000, i=iteration)
             if self.verbose and print_iter == 0 and k == 0:
                 print(
-                    f" Iteration {iteration}  Error: {current_error:.4f} Num swaps: {num_swaps}"
+                    f" Iter {iteration:>6}  Error: {current_error:.4f} Swaps: {num_swaps:>2}"
                 )
 
             # Create a sequence of swaps of length `num_swaps`
@@ -671,7 +671,9 @@ class PermutationCorrelator(Correlator):
                 iter_no_change += 1
 
             # Termination condition triggered
-            if self.max_iter_no_change and (iter_no_change >= self.max_iter_no_change):
+            if self.max_iter_no_change and (
+                iter_no_change >= self.max_iter_no_change * num_vars
+            ):
                 if self.verbose:
                     print(f""" Terminating at iteration {iteration}.
  No improvement for {iter_no_change} iterations. Error: {current_error:.4f}""")
