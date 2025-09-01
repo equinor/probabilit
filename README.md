@@ -123,7 +123,7 @@ Now we can induce correlations:
 >>> format(sp.stats.pearsonr(*X.T).statistic, ".8f")
 '0.06589800'
 >>> correlation_matrix = np.array([[1, 0.3], [0.3, 1]])
->>> transform = ImanConover(correlation_matrix)
+>>> transform = ImanConover().set_target(correlation_matrix)
 >>> X_transformed = transform(X)
 >>> format(sp.stats.pearsonr(*X_transformed.T).statistic, ".8f")
 '0.27965287'
