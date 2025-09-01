@@ -33,7 +33,7 @@ def sample_data(rng):
 def test_preserves_marginal_distributions(rng, sample_data):
     X, C = sample_data
 
-    X_transformed = ImanConover(C)(X)
+    X_transformed = ImanConover().set_target(C)(X)
     for k in range(X.shape[1]):
         assert np.allclose(np.sort(X[:, k]), np.sort(X_transformed[:, k]))
 
@@ -41,7 +41,7 @@ def test_preserves_marginal_distributions(rng, sample_data):
 def test_achieves_target_correlations(sample_data):
     X, C = sample_data
 
-    X_transformed = ImanConover(C)(X)
+    X_transformed = ImanConover().set_target(C)(X)
     rank_corr = spearmanr(X_transformed)[0]
     assert np.allclose(rank_corr, C, atol=0.05)
 
@@ -58,7 +58,7 @@ def test_invalid_correlation_matrix(rng):
     )
 
     with pytest.raises((ValueError, np.linalg.LinAlgError)):
-        ImanConover(C_invalid)(X)
+        ImanConover().set_target(C_invalid)(X)
 
 
 def test_extreme_correlations(rng):
@@ -77,7 +77,7 @@ def test_extreme_correlations(rng):
     eigenvals = np.linalg.eigvals(C_extreme)
     assert np.all(eigenvals > 0), "Test correlation matrix is not positive definite"
 
-    X_extreme = ImanConover(C_extreme)(X)
+    X_extreme = ImanConover().set_target(C_extreme)(X)
     rank_corr_extreme = spearmanr(X_extreme)[0]
     assert np.allclose(rank_corr_extreme, C_extreme, atol=0.05)
 
@@ -91,7 +91,7 @@ def test_correlation_matrix_validation(rng):
     C_invalid = np.array([[1.0, 2.0, 0.3], [2.0, 1.0, 0.2], [0.3, 0.2, 1.0]])
 
     with pytest.raises((ValueError, np.linalg.LinAlgError)):
-        ImanConover(C_invalid)(X)
+        ImanConover().set_target(C_invalid)(X)
 
 
 def test_input_validation(rng):
@@ -106,7 +106,7 @@ def test_input_validation(rng):
     )
 
     with pytest.raises(ValueError):
-        ImanConover(C)(X)
+        ImanConover().set_target(C)(X)
 
 
 def test_orthogonality_precision(rng):
@@ -125,7 +125,7 @@ def test_orthogonality_precision(rng):
     )
 
     X = rng.normal(size=(N, K))
-    X_transformed = ImanConover(C_target)(X)
+    X_transformed = ImanConover().set_target(C_target)(X)
     rank_corr = spearmanr(X_transformed)[0]
 
     # Get the elements that should be zero
@@ -156,7 +156,7 @@ class TestImanConover:
         X = rng.normal(size=(n_observations, n_variables))
 
         # Tranform the data
-        transform = ImanConover(desired_corr)
+        transform = ImanConover().set_target(desired_corr)
         X_transformed = transform(X)
 
         # Check that all columns (variables) have equal marginals.
@@ -184,7 +184,7 @@ class TestImanConover:
 
         # Create a random correlation matrix and a random data matrix
         desired_corr = np.identity(n_variables)
-        transform = ImanConover(desired_corr)
+        transform = ImanConover().set_target(desired_corr)
 
         # Create data and decorrelate it completely
         X = rng.normal(size=(n_observations, n_variables))
@@ -192,7 +192,7 @@ class TestImanConover:
         assert np.allclose(np.corrcoef(X, rowvar=False), np.eye(n_variables))
 
         # Transform it to identity correlation, which it already has
-        transform = ImanConover(desired_corr)
+        transform = ImanConover().set_target(desired_corr)
         X_transformed = transform(X)
 
         assert np.allclose(X, X_transformed)
@@ -205,7 +205,7 @@ class TestImanConover:
 
         desired_corr = np.identity(2)
 
-        transform = ImanConover(desired_corr)
+        transform = ImanConover().set_target(desired_corr)
         with pytest.raises(ValueError):
             transform(X)
 
