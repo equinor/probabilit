@@ -499,7 +499,7 @@ class PermutationCorrelator(Correlator):
         >>> X_ic = ic_trans(X)
         >>> perm_trans._error(X_ic) # Error after Iman-Conover
         0.0071...
-        >>> X_ic_pc = perm_trans.hill_climb(X_ic)
+        >>> X_ic_pc = perm_trans(X_ic)
         Running permutation correlator for 1000 iterations.
          Iteration 100  Error: 0.0037
          Iteration 200  Error: 0.0024
@@ -519,7 +519,7 @@ class PermutationCorrelator(Correlator):
 
         if not (weights is None or np.all(weights > 0)):
             raise ValueError("`weights` must have positive entries.")
-        if not isinstance(iterations, int) and iterations >= 0:
+        if not (isinstance(iterations, int) and iterations >= 0):
             raise ValueError("`iterations` must be non-negative integer.")
         if not isinstance(max_iter_no_change, int) and max_iter_no_change >= 0:
             raise ValueError("`max_iter_no_change` must be non-negative integer.")
@@ -581,9 +581,9 @@ class PermutationCorrelator(Correlator):
         weighted_residuals_sq = self.weights[idx] * (corr[idx] - self.C[idx]) ** 2.0
         return float(np.sqrt(np.sum(weighted_residuals_sq)))
 
-    def hill_climb(self, X):
-        """Hill climbing cycles through columns (variables), and for each
-        column it swaps two random rows (observations). If the result
+    def __call__(self, X):
+        """Cycle through through columns (variables), and for each
+        column it swaps random rows (observations). If the result
         leads to a smaller error (correlation closer to target), then it is
         kept. If not we try again.
 
@@ -607,114 +607,54 @@ class PermutationCorrelator(Correlator):
             )
 
         if self.verbose:
-            print(f"Running permutation correlator for {self.iters} iterations.")
-
-        # Set up loop generator
-        iters = range(1, self.iters + 1) if self.iters else itertools.count(1)
-        loop_gen = itertools.product(iters, range(num_vars))  # (iteration, k)
-
-        # Set up variables that are tracked in the main loop
-        current_X = X.copy()
-        current_error = self._error(current_X)
-        iter_no_change = 0
-
-        # Main loop. For each iteration, k cycles through all variables
-        for iteration, k in loop_gen:
-            print_iter = iteration % (self.iters // 10) if self.iters else 1000
-            if self.verbose and print_iter == 0 and k == 0:
-                print(f" Iteration {iteration}  Error: {current_error:.4f}")
-
-            # Choose a random variable and two random observations
-            # Using rng.integers() is faster than rng.choice(replace=False)
-            i, j = self.rng.integers(0, high=num_obs, size=2)
-            if i == j:
-                continue
-
-            # Turn current_X into a new proposed X by swapping two observations
-            # i and j in column (variable) k.
-            self._swap(current_X, i, j, k)
-            proposed_error = self._error(current_X)
-
-            # The proposed X was better
-            if proposed_error < current_error:
-                current_error = proposed_error
-                iter_no_change = 0
-
-            # The proposed X was worse
-            else:
-                self._swap(current_X, i, j, k)  # Swap indices back
-                iter_no_change += 1
-
-            # Termination condition triggered
-            if self.max_iter_no_change and (iter_no_change >= self.max_iter_no_change):
-                if self.verbose:
-                    print(f""" Terminating at iteration {iteration}.
- No improvement for {iter_no_change} iterations. Error: {current_error:.4f}""")
-                break
-
-        return current_X
-
-    def anneal(self, X):
-        """Hill climbing cycles through columns (variables), and for each
-        column it swaps two random rows (observations). If the result
-        leads to a smaller error (correlation closer to target), then it is
-        kept. If not we try again.
-
-        Parameters
-        ----------
-        X : np.ndarray
-            A matrix with shape (observations, variables).
-
-        Returns
-        -------
-        A copy of X where rows within each column are shuffled.
-        """
-        self._validate_X(X)
-
-        num_obs, num_vars = X.shape
-        if not (isinstance(X, np.ndarray) and X.ndim == 2):
-            raise ValueError("`X` must be a 2D numpy array.")
-        if not num_vars == self.C.shape[0]:
-            raise ValueError(
-                "Number of variables in `X` does not match `correlation_matrix`."
+            print(
+                f"Running permutation correlator for {self.iters if self.iters else 'inf'} iterations."
             )
 
-        if self.verbose:
-            print(f"Running permutation correlator for {self.iters} iterations.")
+        def subiters(n, i):
+            """Number of sub-iterations (swaps) per iteration."""
+            # Use longer swap lengths in early iterations. The last half
+            # of the iterations will use 1 sub-iteration. The second half of the
+            # first half will use 2, and so forth. The pattern is:
+            # n = 2 => [2, 1]
+            # n = 4 => [3, 2, 1, 1]
+            # n = 4 => [4, 3, 2, 2, 1, 1, 1, 1]
+            # n = 8 => [5, 4, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1]
+            # This function computes a closed-form solution to indexing such
+            # a list (of length n) at index i.
+            C = np.log2(n) + 1
+            return int(np.ceil(C ** (1 - (2 * i / n))))
 
-        def subiters(n, base=1):
-            """Create a list with exponential decay, e.g. [4, 3, 2, 2, 1, 1, 1, 1]."""
-            if n == 1:
-                return [base]
-            return subiters(n - (n // 2), base=base + 1) + [base] * (n // 2)
+        def product(iterations_gen, variables_gen):
+            # itertools.product only works for finite inputs, so we need this
+            for i in iterations_gen:
+                for j in variables_gen:
+                    yield (i, j)
 
         # Set up loop generator
-        iters = range(1, self.iters + 1) if self.iters else itertools.count(1)
-        loop_gen = itertools.product(iters, range(num_vars))  # (iteration, k)
+        iter_gen = range(1, self.iters + 1) if self.iters else itertools.count(1)
+        loop_gen = product(iter_gen, range(num_vars))  # (iteration, k)
 
         # Set up variables that are tracked in the main loop
         current_X = X.copy()
         current_error = self._error(current_X)
         iter_no_change = 0
 
-        subiters = subiters(self.iters if self.iters else 10_000)
-
-        # Main loop. For each iteration, k cycles through all variables
+        # Main loop. For each iteration, k cycles through all variables.
+        # This parametrizes the algorithm so iterations is less sensitive to k.
         for iteration, k in loop_gen:
             print_iter = iteration % (self.iters // 10) if self.iters else 1000
+            num_swaps = subiters(n=self.iters if self.iters else 10_000, i=iteration)
             if self.verbose and print_iter == 0 and k == 0:
                 print(
-                    f" Iteration {iteration}  Error: {current_error:.4f} Swap sequence: {subiters[iteration - 1]}"
+                    f" Iteration {iteration}  Error: {current_error:.4f} Num swaps: {num_swaps}"
                 )
 
-            sub_iterations = subiters[iteration - 1]
-            swaps = rng.integers(0, high=num_obs, size=(sub_iterations, 2))
+            # Create a sequence of swaps of length `num_swaps`
+            swaps = list(self.rng.integers(0, high=num_obs, size=(num_swaps, 2)))
             for i, j in swaps:
-                if i == j:
-                    continue
-
                 # Turn current_X into a new proposed X by swapping two observations
-                # i and j in column (variable) k.
+                # i and j in column (variable) k. The swap is done in-place.
                 self._swap(current_X, i, j, k)
 
             proposed_error = self._error(current_X)
@@ -726,10 +666,8 @@ class PermutationCorrelator(Correlator):
 
             # The proposed X was worse
             else:
-                for i, j in reversed(swaps):
-                    if i == j:
-                        continue
-                    self._swap(current_X, i, j, k)  # Swap indices back
+                for i, j in reversed(swaps):  # Swap indices back
+                    self._swap(current_X, i, j, k)
                 iter_no_change += 1
 
             # Termination condition triggered
@@ -797,10 +735,10 @@ if __name__ == "__main__":
     import pytest
     import matplotlib.pyplot as plt
 
-    # pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
 
     rng = np.random.default_rng(2)
-    p = 2
+    p = 10
     n = 999
 
     sampler = sp.stats.qmc.Halton(d=p, seed=42, scramble=False)
@@ -832,29 +770,29 @@ if __name__ == "__main__":
 
     # Create permutation correlator
     correlator = PermutationCorrelator(
-        verbose=True, iterations=10_000, max_iter_no_change=100_000
+        verbose=True, max_iter_no_change=1000, iterations=10_000
     )
     correlator.set_target(target)
 
     # First try cholesky and
     X_chol = Cholesky().set_target(target)(X)
-    print(f"Cholesky error: {correlator._error(X_chol)}")
+    print(f"Cholesky error: {correlator._error(X_chol):.4f}")
     plt.figure(figsize=(4, 4))
-    plt.title(f"Cholesky error: {correlator._error(X_chol)}")
+    plt.title(f"Cholesky error: {correlator._error(X_chol):.4f}")
     plt.scatter(X_chol[:, 0], X_chol[:, 1], s=1)
     plt.show()
 
     # First try cholesky and
     X_ic = ImanConover().set_target(target)(X)
-    print(f"ImanConover error: {correlator._error(X_ic)}")
+    print(f"ImanConover error: {correlator._error(X_ic):.4f}")
     plt.figure(figsize=(4, 4))
-    plt.title(f"ImanConover error: {correlator._error(X_ic)}")
+    plt.title(f"ImanConover error: {correlator._error(X_ic):.4f}")
     plt.scatter(X_ic[:, 0], X_ic[:, 1], s=1)
     plt.show()
 
-    X_pc = correlator.anneal(X)
-    print(f"PermutationCorrelator error: {correlator._error(X_pc)}")
+    X_pc = correlator(X)
+    print(f"PermutationCorrelator error: {correlator._error(X_pc):.4f}")
     plt.figure(figsize=(4, 4))
-    plt.title(f"PermutationCorrelator error: {correlator._error(X_pc)}")
+    plt.title(f"PermutationCorrelator error: {correlator._error(X_pc):.4f}")
     plt.scatter(X_pc[:, 0], X_pc[:, 1], s=1)
     plt.show()
