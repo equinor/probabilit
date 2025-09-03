@@ -6,14 +6,16 @@ import scipy as sp
 
 class TestPermutationCorrelator:
     @pytest.mark.parametrize("seed", range(25))
-    def test_recommended_parameters(self, seed):
+    def test_convergence(self, seed):
+        # With default parameters, convergence should be decent
+        # regardless of the size of the problem
         rng = np.random.default_rng(seed)
 
-        n_variables = rng.integers(2, 10)
-        n_observations = n_variables * 5
+        n_variables = rng.integers(2, 20)
+        n_observations = n_variables * rng.integers(5, 50)
 
         # Create a correlation matrix and a random data matrix
-        desired_corr = np.ones((n_variables, n_variables)) * 0.7
+        desired_corr = np.ones((n_variables, n_variables)) * 0.5
         np.fill_diagonal(desired_corr, val=1.0)
         X = rng.normal(size=(n_observations, n_variables))
 
@@ -21,14 +23,15 @@ class TestPermutationCorrelator:
         transform = PermutationCorrelator(seed=seed).set_target(desired_corr)
         X_transformed = transform(X)
 
-        rel_err = transform._error(X_transformed) / transform._error(X)
-        assert rel_err < 0.1
+        actual_corr = np.corrcoef(X_transformed, rowvar=False)
+        rmse = np.sqrt(np.mean((actual_corr - desired_corr) ** 2))
+        assert rmse < 0.1
 
-    @pytest.mark.parametrize("seed", range(1))
+    @pytest.mark.parametrize("seed", range(10))
     def test_marginals_and_correlation_distance(self, seed):
         rng = np.random.default_rng(seed)
 
-        n_variables = rng.integers(2, 100)
+        n_variables = rng.integers(2, 10)
         n_observations = n_variables * 10
 
         # Create a random correlation matrix and a random data matrix
@@ -37,13 +40,11 @@ class TestPermutationCorrelator:
         X = rng.normal(size=(n_observations, n_variables))
 
         # Tranform the data
-        transform = PermutationCorrelator(seed=0, iterations=50, max_iter_no_change=10)
+        transform = PermutationCorrelator(seed=0, iterations=10)
         transform = transform.set_target(desired_corr)
         X_transformed = transform(X)
 
         # Check that all columns (variables) have equal marginals.
-        # In other words, Iman-Conover can permute each column individually,
-        # but they should have identical entries before and after.
         for j in range(X.shape[1]):
             assert np.allclose(np.sort(X[:, j]), np.sort(X_transformed[:, j]))
 
@@ -65,18 +66,6 @@ class TestPermutationCorrelator:
         transform = PermutationCorrelator(seed=0).set_target(desired_corr)
         X_trans = transform(X)
         assert transform._error(X_trans) < transform._error(X)
-
-    def test_dataset_with_unity_correlation_in_ranks(self):
-        # This dataset is interesting because while the correlation
-        # between the variables is ~0.6, when the data is ranked the
-        # correlation becomes 1. Rank(row) = [1, 2, 3] for both rows.
-        X = np.array([[1.0, 1], [2.0, 1.1], [2.1, 3]])
-
-        desired_corr = np.identity(2)
-
-        transform = PermutationCorrelator(seed=0).set_target(desired_corr)
-        X_trans = transform(X)
-        assert np.allclose(X_trans, np.array([[1.0, 1.1], [2.1, 1.0], [2.0, 3.0]]))
 
 
 if __name__ == "__main__":

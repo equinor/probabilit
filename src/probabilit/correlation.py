@@ -177,7 +177,7 @@ class Correlator(abc.ABC):
         self.P = np.linalg.cholesky(self.C)
         return self
 
-    def _validate_X(self, X):
+    def _validate_X(self, X, check_rows_cols=True):
         """Validate array X of shape (observations, variables)."""
         if not (hasattr(self, "C") and hasattr(self, "P")):
             raise CorrelatorError("User must call `set_target` first.")
@@ -194,7 +194,7 @@ class Correlator(abc.ABC):
             msg += f"correlation matrix ({self.P.shape})"
             raise ValueError(msg)
 
-        if N <= K:
+        if check_rows_cols and N <= K:
             msg = f"The matrix X must have rows > columns. Got shape: {X.shape}"
             raise ValueError(msg)
 
@@ -430,7 +430,7 @@ class PermutationCorrelator(Correlator):
         *,
         weights=None,
         iterations=1000,
-        max_iter_no_change=250,
+        tol=0.01,
         correlation_type="pearson",
         seed=None,
         verbose=False,
@@ -447,9 +447,9 @@ class PermutationCorrelator(Correlator):
             Maximal number of iterations to run. Each iterations consists of
             one loop over all variables. Choosing 0 means infinite iterations.
             The default is 1000.
-        max_iter_no_change : int, optional
-            Maximal number of iterations without any improvement in the
-            objective before terminating. The default is 250.
+        tol : float, optional
+            Tolerance for stopping criteria. Will stop when
+            norm(desired_corr - actual_corr) < tol. The default is 0.05.
         correlation_type : str, optional
             Either "pearson" or "spearman". The default is "pearson".
         seed : int or None, optional
@@ -476,7 +476,7 @@ class PermutationCorrelator(Correlator):
         >>> perm_trans = PermutationCorrelator(seed=0).set_target(correlation_matrix)
         >>> X_transformed = perm_trans(X)
         >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
-        0.7000...
+        0.7020...
 
         For large matrices, it often makes sense to first use Iman-Conover
         to get a good initial solution, then give it to PermutationCorrelator.
@@ -485,8 +485,7 @@ class PermutationCorrelator(Correlator):
         >>> variables = 25
         >>> correlation_matrix = np.ones((variables, variables)) * 0.7
         >>> np.fill_diagonal(correlation_matrix, 1.0)
-        >>> perm_trans = PermutationCorrelator(iterations=1000,
-        ...                                    max_iter_no_change=250,
+        >>> perm_trans = PermutationCorrelator(iterations=1000, tol=1e-6,
         ...                                    seed=0, verbose=True)
         >>> perm_trans = perm_trans.set_target(correlation_matrix)
 
@@ -521,10 +520,8 @@ class PermutationCorrelator(Correlator):
             raise ValueError("`weights` must have positive entries.")
         if not (isinstance(iterations, int) and iterations >= 0):
             raise ValueError("`iterations` must be non-negative integer.")
-        if not isinstance(max_iter_no_change, int) and max_iter_no_change >= 0:
-            raise ValueError("`max_iter_no_change` must be non-negative integer.")
-        if iterations == 0 and max_iter_no_change == 0:
-            raise ValueError("`iterations` or `max_iter_no_change` must be positive.")
+        if not isinstance(tol, float) and tol > 0:
+            raise ValueError("`tol` must be a positive float.")
         if not (isinstance(correlation_type, str) and correlation_type in corr_types):
             raise ValueError(
                 f"`correlation_type` must be one of: {tuple(corr_types.keys())}"
@@ -535,7 +532,7 @@ class PermutationCorrelator(Correlator):
             raise TypeError("`verbose` must be boolean")
 
         self.iters = iterations
-        self.max_iter_no_change = max_iter_no_change
+        self.tol = tol
         self.correlation_func = corr_types[correlation_type]
         self.rng = np.random.default_rng(seed)
         self.verbose = verbose
@@ -576,6 +573,8 @@ class PermutationCorrelator(Correlator):
 
     def _error(self, X):
         """Compute RMSE over upper triangular part of corr(X) - C."""
+        # TODO: An optimization is to compute the error only for the swapped
+        # variable. If k is swapped, then only row and col for k is changed.
         corr = self.correlation_func(X)  # Correlation matrix
         idx = self.triu_indices  # Get upper triangular indices (ignore diag)
         weighted_residuals_sq = self.weights[idx] * (corr[idx] - self.C[idx]) ** 2.0
@@ -596,7 +595,7 @@ class PermutationCorrelator(Correlator):
         -------
         A copy of X where rows within each column are shuffled.
         """
-        self._validate_X(X)
+        self._validate_X(X, check_rows_cols=False)  # Allow rows <= columns
 
         num_obs, num_vars = X.shape
         if not (isinstance(X, np.ndarray) and X.ndim == 2):
@@ -647,7 +646,7 @@ class PermutationCorrelator(Correlator):
             num_swaps = subiters(n=self.iters if self.iters else 10_000, i=iteration)
             if self.verbose and print_iter == 0 and k == 0:
                 print(
-                    f" Iter {iteration:>6}  Error: {current_error:.4f} Swaps: {num_swaps:>2}"
+                    f" Iter {iteration:>6}  Error: {current_error:.6f} Swaps: {num_swaps:>2}"
                 )
 
             # Create a sequence of swaps of length `num_swaps`
@@ -659,6 +658,14 @@ class PermutationCorrelator(Correlator):
 
             proposed_error = self._error(current_X)
 
+            # Termination critera
+            if proposed_error < self.tol:
+                if self.verbose:
+                    print(
+                        f""" Terminating at iteration {iteration} due to tolerance. Error: {current_error:.6f}"""
+                    )
+                return current_X
+
             # The proposed X was better
             if proposed_error < current_error:
                 current_error = proposed_error
@@ -669,15 +676,6 @@ class PermutationCorrelator(Correlator):
                 for i, j in reversed(swaps):  # Swap indices back
                     self._swap(current_X, i, j, k)
                 iter_no_change += 1
-
-            # Termination condition triggered
-            if self.max_iter_no_change and (
-                iter_no_change >= self.max_iter_no_change * num_vars
-            ):
-                if self.verbose:
-                    print(f""" Terminating at iteration {iteration}.
- No improvement for {iter_no_change} iterations. Error: {current_error:.4f}""")
-                break
 
         return current_X
 
@@ -771,9 +769,7 @@ if __name__ == "__main__":
     np.fill_diagonal(target, 1.0)
 
     # Create permutation correlator
-    correlator = PermutationCorrelator(
-        verbose=True, max_iter_no_change=1000, iterations=10_000
-    )
+    correlator = PermutationCorrelator(verbose=True, tol=1e-4, iterations=10_000)
     correlator.set_target(target)
 
     # First try cholesky and
