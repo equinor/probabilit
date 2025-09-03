@@ -322,6 +322,30 @@ def test_that_distribution_params_with_transforms():
     np.testing.assert_allclose(samples1, samples3)
 
 
+def test_correlations():
+    # Test that inducing correlations leads to samples with approximately the
+    # same observed correlations as the desired correlations
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
+    d = Distribution("norm", loc=0, scale=1)
+    expression = a + b + c + d
+
+    # This is not a valid correlation matrix (not pos.def) - but probabilit will fix that
+    corr_mat = np.array([[1.0, 0.8, 0.5], [0.8, 1.0, 0.8], [0.4, 0.8, 1.0]])
+    expression.correlate(a, b, c, corr_mat=corr_mat)
+
+    expression.sample(999, random_state=42)
+
+    observed_corr_mat = np.corrcoef(
+        np.vstack([a.samples_, b.samples_, c.samples_, d.samples_])
+    )
+    desired_corr_mat = np.eye(4)
+    desired_corr_mat[:3, :3] = corr_mat
+
+    np.testing.assert_allclose(observed_corr_mat, desired_corr_mat, atol=0.075)
+
+
 if __name__ == "__main__":
     import pytest
 
