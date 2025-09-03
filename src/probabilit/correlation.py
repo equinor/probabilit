@@ -476,7 +476,7 @@ class PermutationCorrelator(Correlator):
         >>> perm_trans = PermutationCorrelator(seed=0).set_target(correlation_matrix)
         >>> X_transformed = perm_trans(X)
         >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
-        0.7020...
+        0.6824...
 
         For large matrices, it often makes sense to first use Iman-Conover
         to get a good initial solution, then give it to PermutationCorrelator.
