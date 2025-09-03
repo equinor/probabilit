@@ -500,17 +500,16 @@ class PermutationCorrelator(Correlator):
         0.0071...
         >>> X_ic_pc = perm_trans(X_ic)
         Running permutation correlator for 1000 iterations.
-         Iter    100  Error: 0.0071 Swaps:  7
-         Iter    200  Error: 0.0068 Swaps:  5
-         Iter    300  Error: 0.0059 Swaps:  3
-         Iter    400  Error: 0.0045 Swaps:  2
-         Iter    500  Error: 0.0035 Swaps:  1
-         Iter    600  Error: 0.0023 Swaps:  1
-         Iter    700  Error: 0.0017 Swaps:  1
-         Iter    800  Error: 0.0013 Swaps:  1
-         Iter    900  Error: 0.0011 Swaps:  1
-         Iter   1000  Error: 0.0010 Swaps:  1
-
+         Iter    100  Error: 0.007147 Swaps:  7
+         Iter    200  Error: 0.006822 Swaps:  5
+         Iter    300  Error: 0.005900 Swaps:  3
+         Iter    400  Error: 0.004519 Swaps:  2
+         Iter    500  Error: 0.003540 Swaps:  1
+         Iter    600  Error: 0.002286 Swaps:  1
+         Iter    700  Error: 0.001722 Swaps:  1
+         Iter    800  Error: 0.001325 Swaps:  1
+         Iter    900  Error: 0.001077 Swaps:  1
+         Iter   1000  Error: 0.000951 Swaps:  1
         >>> perm_trans._error(X_ic_pc) # Error after Iman-Conover + permutation
         0.0009511...
         """
