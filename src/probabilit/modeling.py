@@ -54,7 +54,7 @@ array([8, 8, 8, 8, 8])
 >>> Add(10, 5, 5).sample(5, random_state=rng)
 array([20, 20, 20, 20, 20])
 
-Let us build a more compliated expression:
+Let us build a more complicated expression:
 
 >>> a = Distribution("norm", loc=5, scale=1)
 >>> b = Distribution("expon", scale=1)
@@ -113,7 +113,7 @@ same arguments. For instance, to sample from a dice use `closest_observation`:
 >>> dice.sample(9, random_state=42)
 array([2, 6, 4, 4, 1, 1, 1, 5, 4])
 
-To sample from a non-parametric distribution defined by the data, similarily
+To sample from a non-parametric distribution defined by the data, similarly
 to a kernel density estimate:
 
 >>> cost = EmpiricalDistribution([200, 200, 300, 250, 225])
@@ -501,7 +501,7 @@ class Node(abc.ABC):
         size, n_dim = quantiles.shape
         assert n_dim == self.num_distribution_nodes()
 
-        # Get the correct corrlator class based on strings
+        # Get the correct correlator class based on strings
         CORRELATOR_MAP = {"imanconover": ImanConover, "cholesky": Cholesky}
         if isinstance(correlator, str):
             correlator = CORRELATOR_MAP[correlator.lower()]
@@ -584,7 +584,7 @@ class Node(abc.ABC):
 
         # Iterate from leaf nodes and up to parent
         for node in nx.topological_sort(G):
-            if hasattr(node, "samples_"):  # Skip if samples alrady exists
+            if hasattr(node, "samples_"):  # Skip if samples already exists
                 pass
             elif isinstance(node, Constant):
                 node.samples_ = node._sample(size=size)  # Draw constants

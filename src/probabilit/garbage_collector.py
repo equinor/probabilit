@@ -41,7 +41,7 @@ class GarbageCollector:
 
     def decrement_and_delete(self, node):
         """Decrement the reference counter (number of unsampled children for
-        each parent) and delete `.samples_` is the reference count is zero.
+        each parent) and delete `.samples_` if the reference count is zero.
 
         Returns the nodes that were garbage collected.
         """
