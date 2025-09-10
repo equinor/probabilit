@@ -18,21 +18,21 @@ For instance, what is the probability that a man is taller than a woman?
 
 ```pycon
 >>> from probabilit.modeling import Distribution
->>> men = Distribution("norm", loc=176, scale=7.1)
->>> women = Distribution("norm", loc=162.5, scale=7.1)
->>> statistic = (men - women > 0)
+>>> male_height = Distribution("norm", loc=176, scale=7.1)
+>>> female_height = Distribution("norm", loc=162.5, scale=7.1)
+>>> statistic = (male_height > female_height)
 >>> samples = statistic.sample(999, random_state=0)
 >>> samples.mean()
 np.float64(0.9039039039039038)
 
 ```
 
-When `statistic` is sampled in the code above, the ancestor nodes `men` and `women` are sampled too.
+When `statistic` is sampled in the code above, the ancestor nodes `male_height` and `female_height` are sampled too.
 In each node, results are stored in the `samples_` attribute.
 
 ```pycon
 >>> import pandas as pd
->>> pd.Series(men.samples_).describe()
+>>> pd.Series(male_height.samples_).describe()
 count    999.000000
 mean     176.096916
 std        7.326152
