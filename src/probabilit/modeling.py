@@ -749,7 +749,15 @@ class OverloadMixin:
 
 
 class Constant(Node, OverloadMixin):
-    """A constant is a number."""
+    """A constant is a number or a string. If the value is a string, sampling returns an array of the string value.
+
+    Examples
+    --------
+    >>> Constant(2)._sample(5)
+    array([2, 2, 2, 2, 2])
+    >>> Constant("car")._sample(5)
+    array(['car', 'car', 'car', 'car', 'car'], dtype='<U3')
+    """
 
     is_leaf = True  # A Constant is always a leaf node
 
@@ -760,7 +768,7 @@ class Constant(Node, OverloadMixin):
     def _sample(self, size=None):
         if size is None:
             return self.value
-        return np.ones(size, dtype=type(self.value)) * self.value
+        return np.array([self.value] * size)
 
     def get_parents(self):
         yield from []  # A Constant does not have any parents
