@@ -749,7 +749,7 @@ class OverloadMixin:
 
 
 class Constant(Node, OverloadMixin):
-    """A constant is a number (can be a string, but samples will not propagate.)
+    """A constant is a number or a string. If the value is a string, sampling returns an array of the string value.
 
     Examples
     --------
