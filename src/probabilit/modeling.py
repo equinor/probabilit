@@ -3,12 +3,12 @@ Modeling
 --------
 
 Probabilit lets the user perform Monte-Carlo sampling using a high-level
-modeling language. The modeling language creates a lazy computational graph.
-When a node is sampled, all ancestor nodes are sampled in turn and samples are
-propagated down in the graph, from parent nodes to child nodes.
+modeling language that creates a lazy computational graph.
+When a node in the graph is sampled, all ancestor nodes are sampled in turn
+and samples are propagated down in the graph, from parent nodes to child nodes.
 
 For instance, to compute the shipping cost of a box where we are uncertain
-about the measurements, we can write:
+about the measurements:
 
 >>> rng = np.random.default_rng(42)
 >>> box_height = Distribution("norm", loc=0.5, scale=0.01)
@@ -24,7 +24,8 @@ about the measurements, we can write:
 Distributions are built on top of scipy, so "norm" refers to the name of the
 normal distribution as given in `scipy.stats`, and the arguments to the
 distribution must match those given by `scipy.stats.norm` (here `loc` and
-`scale`).
+`scale`). Scipy supports almost one hundred probability distributions,
+and all of them are also available in probabilit.
 
 
 Composite distributions
@@ -43,10 +44,10 @@ array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
 The modeling language
 ---------------------
 
-To understand and examine the modeling language, we can perform  computations
+To understand and examine the modeling language, we can perform computations
 using constants. The computational graph carries out arithmetic operations
-when the model is sampled. Mixing numbers with nodes is allowed, but at least
-one expression or term must be a probabilit class instance:
+when the model is sampled. Mixing numbers with nodes in an expression is allowed,
+but at least one expression or term must be a probabilit class instance:
 
 >>> a = Constant(1)
 >>> (a * 3 + 5).sample(5, random_state=rng)
@@ -54,7 +55,7 @@ array([8, 8, 8, 8, 8])
 >>> Add(10, 5, 5).sample(5, random_state=rng)
 array([20, 20, 20, 20, 20])
 
-Let us build a more complicated expression:
+Let us build a more complicated expression with distributions:
 
 >>> a = Distribution("norm", loc=5, scale=1)
 >>> b = Distribution("expon", scale=1)
@@ -73,18 +74,18 @@ Constant(5)
 Multiply(Distribution("expon", scale=1), Constant(5))
 Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1)), Multiply(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=1))), Multiply(Distribution("expon", scale=1), Constant(5)))
 
-Sampling the expression is simple by using `.sample()`:
+Sampling any node is done by calling the `.sample()` method:
 
 >>> expression.sample(5, random_state=rng)
 array([ 2.70764145, 36.58578812,  7.07064239,  1.84433247,  3.90951632])
 
 Sampling the expression has the side effect that `.samples_` is populated on
-*every* node in the expression, for instance:
+*every* ancestor node in the expression, for instance:
 
 >>> a.samples_
 array([4.51589278, 4.37788659, 5.25960812, 5.80609507, 4.33770499])
 
-Here is an even more complex expression:
+Here is an even more complex expression, showcasing some mathematical functions:
 
 >>> a = Distribution("norm", loc=0, scale=1)
 >>> b = Distribution("norm", loc=0, scale=2)
@@ -96,8 +97,8 @@ array([ 4.70542018, 14.43250192,  6.74494838, -0.14020459, -3.27334554])
 Nodes are hashable and can be used in sets, so __hash__ and __eq__ must both
 be defined. Therefore we cannot use `==` for modeling; equality in that context
 has another meaning. Use the Equal node instead. This is only relevant in cases
-when equality operators is part of a model. For real-valued distribution
-(e.g. Normal) equality does not make sense since the probability that two
+when equality operators is part of a model. For distribution defined on real
+numbers (e.g. Normal) equality does not make sense since the probability that two
 floats are equal is zero.
 
 >>> dice1 = Distribution("uniform", loc=1, scale=6) // 1
@@ -107,14 +108,14 @@ floats are equal is zero.
 0.166...
 
 Empirical distributions may also be used. They wrap np.quantile and take the
-same arguments. For instance, to sample from a dice use `closest_observation`:
+same arguments. For instance, to sample a dice we can pass `closest_observation`:
 
 >>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
 >>> dice.sample(9, random_state=42)
 array([2, 6, 4, 4, 1, 1, 1, 5, 4])
 
-To sample from a non-parametric distribution defined by the data, similarly
-to a kernel density estimate:
+To sample from a non-parametric distribution defined by data,
+similar to a kernel density estimate:
 
 >>> cost = EmpiricalDistribution([200, 200, 300, 250, 225])
 >>> cost.sample(9, random_state=42)
@@ -133,7 +134,7 @@ descendant of the nodes you wish to correlate:
 >>> corr_mat = np.array([[1, 0.5], [0.5, 1]])
 >>> s = (a + b).correlate(a, b, corr_mat=corr_mat).sample(99, random_state=0)
 
-Check that we get a correlation close to the desired value of 0.5:
+We can verify that the correlation is close to the desired value of 0.5:
 
 >>> float(pearsonr(a.samples_, b.samples_).statistic)
 0.42817...
@@ -141,11 +142,11 @@ Check that we get a correlation close to the desired value of 0.5:
 
 Multivariate distributions
 --------------------------
-Support for multivariate distributions (MVD) is implemented, but with constraints:
+Support for multivariate distributions (MVD) is implemented, but is limited:
 
-  1. MVD must be a leaf node (its arguments cannot be other distributions)
+  1. the MVD must be a leaf node (its arguments cannot be other distributions)
   2. its return values *must* be unpacked as marginals (slices)
-  3. only pseudo-random sampling is possible (LHS, Sobol, etc is ignored)
+  3. only pseudo-random sampling is possible (LHS, Sobol, etc. is ignored)
 
 For instance, to create a Dirichlet distribution, we must unpack it as follows:
 
@@ -158,6 +159,9 @@ the sum of the marginals is always 1. We can check this by computing:
 
 >>> (d1 + d2).sample(5, random_state=0)
 array([1., 1., 1., 1., 1.])
+
+Each marginal has values between 0 and 1:
+
 >>> d2.samples_.round(3)
 array([0.559, 0.324, 0.284, 0.524, 0.599])
 
@@ -174,7 +178,7 @@ array([2.52848604, 5.31650094, 5.20076878, 4.06217341, 1.40748585])
 Samplers
 --------
 
-The default sampling uses pseudo-random numbers. To use e.g. latin hybercube
+By default sampling uses pseudo-random numbers. To use e.g. latin hybercube
 sampling, pass the `method` argument into `.sample()`.
 
 >>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
@@ -183,7 +187,8 @@ sampling, pass the `method` argument into `.sample()`.
 >>> float(dice.sample(9, random_state=1, method=None).mean())
 1.888...
 
-To retain more control, use the `sample_from_quantiles` method directly instead:
+To retain more control, use the `sample_from_quantiles` method directly instead.
+The quantiles are passed to the inverse CDF (percent point function) when sampling:
 
 >>> from scipy.stats.qmc import LatinHypercube
 >>> d = expression.num_distribution_nodes()
@@ -195,9 +200,11 @@ array([ 7.80785741,  3.72416016,  3.77849849, -3.83561905, 38.02479019])
 
 Garbage collection
 ------------------
-By default the `.samples_` attribute is set on each ancestor when sampling.
-This can cause some memory overhead in large graphs. A garbage collection
+By default the `.samples_` attribute is set on every ancestor when sampling.
+This can lead to memory overhead in large graphs. A garbage collection
 strategy can be set to keep the memory constrained:
+
+Setting `gc_strategy=[]` removes `.samples_` on all nodes except the final node:
 
 >>> a = Distribution("norm")
 >>> intermediate_result = (a + a)**2 - a
@@ -205,7 +212,7 @@ strategy can be set to keep the memory constrained:
 >>> final_result.sample(3, random_state=42, gc_strategy=[]).round(3)
 array([2.0730000e+00, 1.0532374e+04, 2.4920000e+00])
 
-Setting `gc_strategy=[]` removes `.samples_` on all nodes except the final node:
+Verif that `.samples_` was not set on ancestors:
 
 >>> hasattr(a, "samples_")
 False
@@ -220,6 +227,8 @@ array([2.0730000e+00, 1.0532374e+04, 2.4920000e+00])
 True
 >>> hasattr(intermediate_result, "samples_")
 False
+
+When passing `gc_strategy=None` (the default), probabilit will not do any GC.
 
 
 Functions
@@ -246,6 +255,11 @@ Now sample 'through' the function:
 
 >>> expression.sample(5, random_state=rng)
 array([0.        , 0.        , 0.45555522, 0.        , 0.        ])
+
+This type of sampling is slower, since it passes each sample in turn and
+is not vectorized. The advantage is that the function can be a complex
+simulation model, or read and write files, etc.
+
 """
 
 import operator
