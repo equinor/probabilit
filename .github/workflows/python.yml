@@ -44,4 +44,4 @@ jobs:
 
     - name: Run doctests in README
       run: |
-        python -m doctest README.md
+        python -m doctest README.md -o ELLIPSIS

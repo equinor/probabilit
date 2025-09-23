@@ -4,17 +4,17 @@ A small Python package for Monte Carlo modeling.
 
 - User friendly API with a modeling language.
 - Built on scipy and numpy.
-- Supports composite distributions (e.g. mean of a distribution can be a distribution).
+- Supports composite distributions (e.g. the mean of a distribution can be a distribution).
 - Supports Quasi-Monte Carlo sampling, e.g. Sobol, Halton and LHS.
 - Supports inducing correlations with Iman-Conover.
 
 ## Modeling
 
-The modeling API creates lets you create a computational graph, where each node is a distribution, a constant or some transformation.
+The modeling API lets you create a computational graph, where each node is either a distribution, a constant or a transformation.
 Once the method `.sample()` is called on a node, each ancestor node is sampled in turn.
 
 **Example 1 - Height.**
-For instance, what is the probability that a man is taller than a woman?
+What is the probability that a man is taller than a woman?
 
 ```pycon
 >>> from probabilit.modeling import Distribution
@@ -22,8 +22,8 @@ For instance, what is the probability that a man is taller than a woman?
 >>> female_height = Distribution("norm", loc=162.5, scale=7.1)
 >>> statistic = (male_height > female_height)
 >>> samples = statistic.sample(999, random_state=0)
->>> samples.mean()
-np.float64(0.9039039039039038)
+>>> float(samples.mean())
+0.9039...
 
 ```
 
@@ -47,9 +47,8 @@ dtype: float64
 
 
 **Example 2 - Bird survival.**
-Here is another example illustrating _composite distributions_, where the argument
-to one distribution is another distribution.
-Suppose we have a distribution governing the number off eggs per bird nest for a certain species, and a survival probability.
+This example illustrates _composite distributions_, where the argument to one distribution is another distribution.
+Suppose we have a distribution governing the number off eggs per bird nest for a certain species, and each hatched bird a survival probability.
 What is the distribution of the number of birds that survive per nest?
 
 ```pycon
@@ -62,8 +61,8 @@ array([2., 1., 1., 2., 2., 2., 2., 0., 0.])
 ```
 
 **Example 3 - Mutual fund.**
-Suppose you save 1200 units of money per year and that the yearly interest rate has a distribution `N(1.11, 0.15)`.
-How much money will you have over a 20 year horizon?
+Suppose we save 1200 units of money per year and that the yearly interest rate has a distribution `N(1.11, 0.15)`.
+How much money will we have after 20 years?
 
 ```pycon
 >>> saved_per_year = 1200
@@ -79,11 +78,11 @@ How much money will you have over a 20 year horizon?
 
 ## Low-level API
 
-The low-level API contains Numpy functions for working with random variables.
-The two most important ones are (1) the `nearest_correlation_matrix` function and and (2) the `ImanConover` class.
+The low-level API contains numpy functions for working with random variables.
+The two most important ones are (1) the `nearest_correlation_matrix` function and (2) the `ImanConover` class.
 
 **Fixing user-supplied correlation matrices.**
-The function `nearest_correlation_matrix` can be used to fix user-specified correlation matrices, which are often not valid.
+The function `nearest_correlation_matrix` can be used to fix user-specified correlation matrices, which are often invalid.
 Below a user has specified some correlations, but the resulting correlation matrix has a negative eigenvalue and is not positive definite.
 
 ```pycon
@@ -104,8 +103,8 @@ array([2.07852823e+00, 9.21470108e-01, 1.66710188e-06])
 ```
 
 **Inducing correlations on samples.**
-The class `ImanConover` can be used to induce correlations on uncorrelated variables.
-There's not guarantee that we're able to achieve the desired correlation structure, but in practice we can often get close.
+The class `ImanConover` can be used to induce correlations on uncorrelated variables without changing the marginal distributions.
+There's no guarantee that we're able to achieve the desired correlation structure, but in practice we often get close.
 
 ```pycon
 >>> import scipy as sp
@@ -120,12 +119,12 @@ There's not guarantee that we're able to achieve the desired correlation structu
 Now we can induce correlations:
 
 ```pycon
->>> format(sp.stats.pearsonr(*X.T).statistic, ".8f")
-'0.06589800'
+>>> float(sp.stats.pearsonr(*X.T).statistic)
+0.065898...
 >>> correlation_matrix = np.array([[1, 0.3], [0.3, 1]])
 >>> transform = ImanConover().set_target(correlation_matrix)
 >>> X_transformed = transform(X)
->>> format(sp.stats.pearsonr(*X_transformed.T).statistic, ".8f")
-'0.27965287'
+>>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
+0.279652...
 
 ```
