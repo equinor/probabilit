@@ -27,6 +27,13 @@ dependencies = [
 dev = [
 "ruff",
 "pytest",
+"mypy",
+]
+types = [
+"types-setuptools",
+"pandas-stubs",
+"types-seaborn",
+"types-networkx",
 ]
 
 [project.urls]

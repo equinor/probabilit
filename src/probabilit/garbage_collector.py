@@ -1,5 +1,6 @@
 import collections
 from collections.abc import Collection
+from typing import Dict, Any, List
 
 
 class GarbageCollector:
@@ -21,7 +22,7 @@ class GarbageCollector:
 
         self.strategy = strategy
 
-    def set_sink(self, sink):
+    def set_sink(self, sink: Any) -> "GarbageCollector":
         """Set the sink node, whose samples will always be kept."""
         self.sink = sink
 
@@ -32,14 +33,14 @@ class GarbageCollector:
         # Initialize the reference counter, keeping track of the number of
         # unsampled children of all nodes. Once a node has no unsampled children
         # (i.e. all children are sampled), that node can safely be GC'ed.
-        self._unsampled_children = collections.defaultdict(int)
+        self._unsampled_children: Dict[Any, int] = collections.defaultdict(int)
         for node in self.sink.nodes():
             for parent in node.get_parents():
                 self._unsampled_children[parent] += 1
 
         return self
 
-    def decrement_and_delete(self, node):
+    def decrement_and_delete(self, node: Any) -> List[Any]:
         """Decrement the reference counter (number of unsampled children for
         each parent) and delete `.samples_` if the reference count is zero.
 

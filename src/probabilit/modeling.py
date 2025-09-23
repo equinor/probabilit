@@ -262,6 +262,7 @@ from probabilit.correlation import nearest_correlation_matrix, ImanConover, Chol
 from probabilit.utils import build_corrmat, zip_args
 from probabilit.garbage_collector import GarbageCollector
 import copy
+from typing import Optional, List, Tuple, Any as TypingAny, Dict, Callable
 
 
 # =============================================================================
@@ -337,20 +338,38 @@ class Node(abc.ABC):
 
     id_iter = itertools.count()  # Every node gets a unique ID
 
-    def __init__(self):
-        self._id = next(self.id_iter)
-        self._correlations = []
+    def __init__(self) -> None:
+        self._id: int = next(self.id_iter)
+        self._correlations: List[TypingAny] = []
+        # samples_ is set dynamically during sampling, not initialized here
+        
+    # Type annotation for samples_ without initialization
+    samples_: Optional[np.ndarray]
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         if not isinstance(other, Node):
             return NotImplemented
         # Needed for set() to work on Node. Equality in models must use Equal()
         return self._id == other._id
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self._id
 
-    def copy(self):
+    @abc.abstractmethod
+    def _sample(self, *args, **kwargs) -> np.ndarray:
+        """Sample from this node."""
+        pass
+
+    def get_parents(self) -> List["Node"]:
+        """Return the parent nodes of this node. Override in subclasses."""
+        return []
+
+    @property
+    def is_leaf(self) -> bool:
+        """Return True if this node has no parents."""
+        return len(self.get_parents()) == 0
+
+    def copy(self) -> "Node":
         """Copy the Node, including the entire graph above it.
 
         Examples
@@ -366,9 +385,9 @@ class Node(abc.ABC):
         False
         """
         # Map from ID to new object copy
-        id_to_new = dict()
+        id_to_new: Dict[int, Node] = dict()
 
-        def update(item):
+        def update(item: TypingAny) -> TypingAny:
             """Given an item, use the ID to map to new object copy."""
             if isinstance(item, Node):
                 return id_to_new[item._id]
@@ -389,7 +408,7 @@ class Node(abc.ABC):
 
             # Now that the node has been updated, update references to parents
             # to point to Nodes in the new copied graph instead of the old one.
-            if isinstance(copied, (AbstractDistribution, ScalarFunctionTransform)):
+            if hasattr(copied, "args") and hasattr(copied, "kwargs"):
                 copied.args = tuple(update(arg) for arg in copied.args)
                 copied.kwargs = {k: update(v) for (k, v) in copied.kwargs.items()}
             elif isinstance(copied, (VariadicTransform, BinaryTransform)):
@@ -493,8 +512,11 @@ class Node(abc.ABC):
         )
 
     def sample_from_quantiles(
-        self, quantiles, correlator="imanconover", gc_strategy=None
-    ):
+        self,
+        quantiles: np.ndarray,
+        correlator: TypingAny = "imanconover",
+        gc_strategy: Optional[TypingAny] = None,
+    ) -> np.ndarray:
         """Use samples from an array of quantiles in [0, 1] to sample all
         distributions. The array must have shape (dimensionality, num_samples)."""
         assert nx.is_directed_acyclic_graph(self.to_graph())
@@ -518,11 +540,13 @@ class Node(abc.ABC):
         gc = GarbageCollector(strategy=gc_strategy).set_sink(self)
 
         # Start with initial sampling nodes, which contain independent variables
-        initial_sampling_nodes = set(
+        initial_sampling_nodes_set = set(
             node for node in self.nodes() if node._is_initial_sampling_node()
         )
         # Ensure consistent ordering for reproducible results
-        initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
+        initial_sampling_nodes: List[Node] = sorted(
+            initial_sampling_nodes_set, key=lambda n: n._id
+        )
 
         # Loop over all initial sampling nodes (ISN) and sample them
         G = self.to_graph()
@@ -558,7 +582,8 @@ class Node(abc.ABC):
                 raise ValueError(f"Correlations specified more than once: {common}")
 
         # Map all variables to integers to associate them with a column
-        all_variables = list(functools.reduce(set.union, variable_sets, set()))
+        all_variables_set: set = functools.reduce(set.union, variable_sets, set())
+        all_variables: List[Node] = list(all_variables_set)
         # Ensure consistent ordering for reproducible results
         all_variables = sorted(all_variables, key=lambda n: n._id)
         var_to_int = {v: i for (i, v) in enumerate(all_variables)}
@@ -577,7 +602,11 @@ class Node(abc.ABC):
             correlator_instance = correlator().set_target(correlation_matrix)
 
             # Concatenate samples, correlate them (shift rows in each col), then re-assign
-            samples_input = np.vstack([var.samples_ for var in all_variables]).T
+            samples_list = [var.samples_ for var in all_variables]
+            assert all(s is not None for s in samples_list), (
+                "All variable samples must be set"
+            )
+            samples_input = np.vstack([s for s in samples_list if s is not None]).T
             samples_ouput = correlator_instance(samples_input)
             for var, sample in zip(all_variables, samples_ouput.T):
                 var.samples_ = np.copy(sample)
@@ -600,7 +629,11 @@ class Node(abc.ABC):
             is_numeric = (node.samples_ is not None) and np.issubdtype(
                 node.samples_.dtype, np.number
             )
-            if is_numeric and not np.all(np.isfinite(node.samples_)):
+            if (
+                is_numeric
+                and node.samples_ is not None
+                and not np.all(np.isfinite(node.samples_))
+            ):
                 raise ValueError(
                     f"Sampling this node gave non-finite values: {node}\n{node.samples_}"
                 )
@@ -611,6 +644,7 @@ class Node(abc.ABC):
             # be deleted (only if the garbage collection strategy allows it).
             gc.decrement_and_delete(node)
 
+        assert self.samples_ is not None, "samples_ should be set after sampling"
         return self.samples_
 
     def _is_initial_sampling_node(self):
@@ -759,13 +793,13 @@ class Constant(Node, OverloadMixin):
     array(['car', 'car', 'car', 'car', 'car'], dtype='<U3')
     """
 
-    is_leaf = True  # A Constant is always a leaf node
+    is_leaf: bool = True  # A Constant is always a leaf node
 
-    def __init__(self, value):
-        self.value = value.value if isinstance(value, Constant) else value
+    def __init__(self, value: TypingAny) -> None:
+        self.value: TypingAny = value.value if isinstance(value, Constant) else value
         super().__init__()
 
-    def _sample(self, size=None):
+    def _sample(self, size: Optional[int] = None) -> TypingAny:
         if size is None:
             return self.value
         return np.array([self.value] * size)
@@ -784,13 +818,13 @@ class AbstractDistribution(Node, OverloadMixin, abc.ABC):
 class Distribution(AbstractDistribution):
     """A distribution is a sampling node with or without ancestors."""
 
-    def __init__(self, distr, *args, **kwargs):
-        self.distr = distr
-        self.args = args
-        self.kwargs = kwargs
+    def __init__(self, distr: str, *args: TypingAny, **kwargs: TypingAny) -> None:
+        self.distr: str = distr
+        self.args: Tuple[TypingAny, ...] = args
+        self.kwargs: Dict[str, TypingAny] = kwargs
         super().__init__()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         args = ", ".join(repr(arg) for arg in self.args)
         kwargs = ", ".join(f"{k}={repr(v)}" for (k, v) in self.kwargs.items())
         out = f'{type(self).__name__}("{self.distr}"'
@@ -800,8 +834,8 @@ class Distribution(AbstractDistribution):
             out += f", {kwargs}"
         return out + ")"
 
-    def _sample(self, q):
-        def unpack(arg):
+    def _sample(self, q: np.ndarray) -> np.ndarray:
+        def unpack(arg: TypingAny) -> TypingAny:
             """Unpack distribution arguments (parents) to arrays if Node."""
             return arg.samples_ if isinstance(arg, Node) else arg
 
@@ -819,23 +853,23 @@ class Distribution(AbstractDistribution):
             seed = int(q[0] * 2**20)  # Seed based on q
             return distribution(*args, **kwargs).rvs(size=len(q), random_state=seed)
 
-    def get_parents(self):
+    def get_parents(self) -> List[Node]:
         # A distribution only has parents if it has parameters that are Nodes
+        result = []
         for arg in self.args + tuple(self.kwargs.values()):
             if isinstance(arg, Node):
-                yield arg
+                result.append(arg)
+        return result
 
     @property
-    def is_leaf(self):
-        return list(self.get_parents()) == []
+    def is_leaf(self) -> bool:
+        return len(self.get_parents()) == 0
 
 
 class EmpiricalDistribution(AbstractDistribution):
     """A distribution is a sampling node with or without ancestors.
 
     A thin wrapper around numpy.quantile."""
-
-    is_leaf = True
 
     def __init__(self, data, **kwargs):
         self.data = np.array(data)
@@ -865,8 +899,6 @@ class CumulativeDistribution(AbstractDistribution):
     array([16.45450099, 23.76785766, 19.43328285, 18.32215403, 13.90046601,
            13.89986301, 11.4520903 , 21.65440364, 18.3426251 ])
     """
-
-    is_leaf = True
 
     def __init__(self, quantiles, cumulatives):
         self.q = np.array(quantiles)
@@ -902,8 +934,6 @@ class DiscreteDistribution(AbstractDistribution):
     >>> distr.sample(9, random_state=42)
     array(['C', 'F', 'E', 'D', 'A', 'A', 'A', 'F', 'D'], dtype='<U1')
     """
-
-    is_leaf = True
 
     def __init__(self, values, probabilities=None):
         self.values = np.array(values)
@@ -941,11 +971,16 @@ class DiscreteDistribution(AbstractDistribution):
 class Transform(Node, OverloadMixin, abc.ABC):
     """Transform nodes represent arithmetic operations."""
 
-    is_leaf = False
+    is_leaf: bool = False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         parents = ", ".join(repr(parent) for parent in self.get_parents())
         return f"{type(self).__name__}({parents})"
+
+    @abc.abstractmethod
+    def get_parents(self) -> List[Node]:
+        """Return the parent nodes of this transform."""
+        pass
 
 
 class VariadicTransform(Transform):
@@ -955,16 +990,21 @@ class VariadicTransform(Transform):
 
     """
 
-    def __init__(self, *args):
-        self.parents = tuple(python_to_prob(arg) for arg in args)
+    op: Callable[..., TypingAny]  # Will be set by subclasses
+
+    def __init__(self, *args: TypingAny) -> None:
+        self.parents: Tuple[Node, ...] = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
 
-    def _sample(self, size=None):
-        samples = (parent.samples_ for parent in self.parents)
-        return functools.reduce(self.op, samples)
+    def _sample(self, size: Optional[int] = None) -> np.ndarray:
+        samples = [parent.samples_ for parent in self.parents]
+        assert all(s is not None for s in samples), "All parent samples must be set"
+        # Filter out None values after assertion
+        valid_samples = [s for s in samples if s is not None]
+        return functools.reduce(self.op, valid_samples)
 
-    def get_parents(self):
-        yield from self.parents
+    def get_parents(self) -> List[Node]:
+        return list(self.parents)
 
 
 class Add(VariadicTransform):
@@ -992,10 +1032,14 @@ class Any(VariadicTransform):
 
 
 class Avg(VariadicTransform):
-    def _sample(self, size=None):
+    def _sample(self, size: Optional[int] = None) -> np.ndarray:
         # Avg(a, Avg(b, c)) !=  Avg(Avg(a, b), c), so we override _sample()
         samples = tuple(parent.samples_ for parent in self.parents)
-        return np.average(np.vstack(samples), axis=0)
+        # Assert that all samples are not None
+        assert all(s is not None for s in samples), "All parent samples must be set"
+        # Cast to remove Optional typing after assertion
+        non_none_samples = tuple(s for s in samples if s is not None)
+        return np.average(np.vstack(non_none_samples), axis=0)
 
 
 class NoOp(VariadicTransform):
@@ -1008,16 +1052,18 @@ class NoOp(VariadicTransform):
 class BinaryTransform(Transform):
     """Class for binary transforms, such as Divide, Power, Subtract, etc."""
 
-    def __init__(self, *args):
-        self.parents = tuple(python_to_prob(arg) for arg in args)
+    op: Callable[..., TypingAny]  # Will be set by subclasses
+
+    def __init__(self, *args: TypingAny) -> None:
+        self.parents: Tuple[Node, ...] = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
 
-    def _sample(self, size=None):
+    def _sample(self, size: Optional[int] = None) -> np.ndarray:
         samples = (parent.samples_ for parent in self.parents)
         return self.op(*samples)
 
-    def get_parents(self):
-        yield from self.parents
+    def get_parents(self) -> List[Node]:
+        return list(self.parents)
 
 
 class FloorDivide(BinaryTransform):
@@ -1072,15 +1118,17 @@ class UnaryTransform(Transform):
     """Class for unary tranforms, i.e. functions that take one argument, such
     as Abs(), Exp(), Log()."""
 
-    def __init__(self, arg):
-        self.parent = python_to_prob(arg)
+    op: Callable[..., TypingAny]  # Will be set by subclasses
+
+    def __init__(self, arg: TypingAny) -> None:
+        self.parent: Node = python_to_prob(arg)
         super().__init__()
 
-    def _sample(self, size=None):
+    def _sample(self, size: Optional[int] = None) -> np.ndarray:
         return self.op(self.parent.samples_)
 
-    def get_parents(self):
-        yield self.parent
+    def get_parents(self) -> List[Node]:
+        return [self.parent]
 
 
 class Negate(UnaryTransform):
@@ -1268,7 +1316,7 @@ def MultivariateDistribution(distr, *args, **kwargs):
     distr = Distribution(distr, *args, **kwargs)
 
     # Get dimensionality by sampling once
-    d = len(distr._sample(q=[0.5]).squeeze())
+    d = len(distr._sample(q=np.array([0.5])).squeeze())
     yield from (MarginalDistribution(distr, d=i) for i in range(d))
 
 
@@ -1296,6 +1344,7 @@ if __name__ == "__main__":
     expression.sample(999, random_state=rng)
 
     plt.figure(figsize=(3, 2))
+    assert a.samples_ is not None and b.samples_ is not None
     plt.scatter(a.samples_, b.samples_, s=2)
     plt.show()
 

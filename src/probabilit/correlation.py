@@ -135,6 +135,7 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     # https://www.cvxpy.org/tutorial/solvers/index.html#setting-solver-options
     problem = cp.Problem(cp.Minimize(objective), constraints)
     problem.solve(solver="SCS", verbose=verbose, eps=eps)
+    assert X.value is not None, "Solver failed to find a solution"
     X = X.value.copy()  # Copy over solution
 
     # We might get small eigenvalues due to numerics. Attempt to fix this by
@@ -941,13 +942,13 @@ if __name__ == "__main__":
         X = np.zeros_like(samples)
         for j in range(X.shape[1]):
             func_i = int(rng.integers(0, 4))
-            func = [
+            func_list = [
                 sp.stats.uniform(),
                 sp.stats.expon(),
                 sp.stats.norm(),
                 sp.stats.lognorm(s=1),
             ]
-            func = func[func_i]
+            func = func_list[func_i]
             # func = sp.stats.uniform()
             X[:, j] = func.ppf(samples[:, j]) * rng.normal(loc=5, scale=2)
 
