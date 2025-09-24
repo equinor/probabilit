@@ -508,7 +508,7 @@ class Node(abc.ABC):
 
         >>> s = result.sample(25, random_state=0, correlator=Cholesky())
         >>> float(pearsonr(a.samples_, b.samples_).statistic)
-        0.599999...
+        0.600000...
         >>> float(np.min(b.samples_)) # Cholesky does not preserve marginals!
         -0.35283...
 
@@ -719,6 +719,13 @@ class Node(abc.ABC):
         for var in variables:
             if var not in nodes:
                 raise ValueError(f"{var} is not an ancestor of {self}")
+
+        valid_diag = np.allclose(np.diag(corr_mat), 1)
+        valid_entries = np.allclose(np.clip(corr_mat, -1, 1), corr_mat)
+        if not (valid_diag and valid_entries):
+            raise ValueError(
+                "Correlation matrix must have entries in [-1, 1] and 1 on diagonal."
+            )
 
         self._correlations.append((list(variables), np.copy(corr_mat)))
         return self
