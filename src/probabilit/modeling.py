@@ -470,8 +470,8 @@ class Node(abc.ABC):
             (qmc.Halton) or "sobol" (qmc.Sobol). The default is None, which
             means pseudo-random sampling.
         correlator : Correlator or str, optional
-            A Correlator instance or a string  in {"cholesky", "imanconover",
-           "permutation", "composite"} The default is "imanconover", which first
+            A Correlator instance or a string in {"cholesky", "imanconover",
+           "permutation", "composite"}. The default is "composite", which first
             runs Iman-Conover, then runs the Permutation correlator on the result.
         gc_strategy : None or list, optional
             If None, no garbage collection is performed and the attribute
