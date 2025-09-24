@@ -334,7 +334,7 @@ def test_correlations():
     expression = a + b + c + d
 
     # This is not a valid correlation matrix (not pos.def) - but probabilit will fix that
-    corr_mat = np.array([[1.0, 0.8, 0.5], [0.8, 1.0, 0.8], [0.4, 0.8, 1.0]])
+    corr_mat = np.array([[1.0, 0.8, 0.5], [0.8, 1.0, 0.8], [0.5, 0.8, 1.0]])
     expression.correlate(a, b, c, corr_mat=corr_mat)
 
     expression.sample(999, random_state=42)

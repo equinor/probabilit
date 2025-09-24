@@ -720,6 +720,13 @@ class Node(abc.ABC):
             if var not in nodes:
                 raise ValueError(f"{var} is not an ancestor of {self}")
 
+        valid_diag = np.allclose(np.diag(corr_mat), 1)
+        valid_entries = np.allclose(np.clip(corr_mat, -1, 1), corr_mat)
+        if not (valid_diag and valid_entries):
+            raise ValueError(
+                "Correlation matrix must have entries in [-1, 1] and 1 on diagonal."
+            )
+
         self._correlations.append((list(variables), np.copy(corr_mat)))
         return self
 

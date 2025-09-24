@@ -109,6 +109,12 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     if not matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1]:
         raise ValueError("Input argument `matrix` must be square.")
 
+    # If the matrix is already valid, return it back immediately
+    valid_diag = np.allclose(np.diag(matrix), 1)
+    valid_entries = np.allclose(np.clip(matrix, -1, 1), matrix)
+    if all((valid_diag, valid_entries, _is_positive_definite(matrix))):
+        return matrix
+
     # Switch to notation used in the paper
     G = matrix.copy()
     H = np.ones_like(G) if weights is None else weights
