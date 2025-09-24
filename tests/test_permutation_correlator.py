@@ -1,5 +1,5 @@
 from probabilit.correlation import (
-    PermutationCorrelator,
+    Permutation,
     CorrelationMatrix,
     SwapIndexGenerator,
 )
@@ -116,7 +116,7 @@ class TestCorrelationMatrix:
         np.testing.assert_allclose(X_singles, X_multiples)
 
 
-class TestPermutationCorrelator:
+class TestPermutation:
     @pytest.mark.parametrize("seed", range(25))
     def test_convergence(self, seed):
         # With default parameters, convergence should be decent
@@ -132,7 +132,7 @@ class TestPermutationCorrelator:
         X = rng.normal(size=(n_observations, n_variables))
 
         # Tranform the data
-        transform = PermutationCorrelator(seed=seed).set_target(desired_corr)
+        transform = Permutation(random_state=seed).set_target(desired_corr)
         X_transformed = transform(X)
 
         actual_corr = np.corrcoef(X_transformed, rowvar=False)
@@ -152,7 +152,7 @@ class TestPermutationCorrelator:
         X = rng.normal(size=(n_observations, n_variables))
 
         # Tranform the data
-        transform = PermutationCorrelator(seed=0, iterations=10)
+        transform = Permutation(random_state=0, iterations=10)
         transform = transform.set_target(desired_corr)
         X_transformed = transform(X)
 
@@ -160,7 +160,7 @@ class TestPermutationCorrelator:
         for j in range(X.shape[1]):
             assert np.allclose(np.sort(X[:, j]), np.sort(X_transformed[:, j]))
 
-        # After using the PermutationCorrelator, the distance to the
+        # After using the Permutation, the distance to the
         # desired correlation matrix should be smaller than it was before.
         X_corr = np.corrcoef(X, rowvar=False)
         distance_before = sp.linalg.norm(X_corr - desired_corr, ord="fro")
@@ -175,7 +175,7 @@ class TestPermutationCorrelator:
         X = rng.normal(size=(5, 10))
 
         desired_corr = np.identity(10)
-        transform = PermutationCorrelator(seed=0).set_target(desired_corr)
+        transform = Permutation(random_state=0).set_target(desired_corr)
         X_trans = transform(X)
 
         cor_X_trans = np.corrcoef(X_trans, rowvar=False)

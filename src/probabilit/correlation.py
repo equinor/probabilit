@@ -202,6 +202,7 @@ class Correlator(abc.ABC):
         return N, K
 
 
+@dataclasses.dataclass(init=False, repr=True, eq=False)
 class Cholesky(Correlator):
     """Create a Cholesky transform.
 
@@ -285,6 +286,7 @@ class Cholesky(Correlator):
         return mean + X_n @ (transform * std)
 
 
+@dataclasses.dataclass(init=False, repr=True, eq=False)
 class ImanConover(Correlator):
     """Create an Iman-Conover transform.
 
@@ -470,7 +472,8 @@ class SwapIndexGenerator:
         return chosen[:size], chosen[size:]
 
 
-class PermutationCorrelator(Correlator):
+@dataclasses.dataclass(init=False, repr=True, eq=False)
+class Permutation(Correlator):
     def __init__(
         self,
         *,
@@ -478,10 +481,10 @@ class PermutationCorrelator(Correlator):
         iterations=1000,
         tol=0.01,
         correlation_type="pearson",
-        seed=None,
+        random_state=None,
         verbose=False,
     ):
-        """Create a PermutationCorrelator instance, which induces correlations
+        """Create a Permutation instance, which induces correlations
         between variables in X by randomly shuffling rows within each column.
 
         Parameters
@@ -498,8 +501,8 @@ class PermutationCorrelator(Correlator):
             norm(desired_corr - actual_corr) < tol. The default is 0.05.
         correlation_type : str, optional
             Either "pearson" or "spearman". The default is "pearson".
-        seed : int or None, optional
-            A seed for the random number generator. The default is None.
+        random_state : np.random.Generator, int or None, optional
+            A random state for the random number generator. The default is None.
         verbose : bool, optional
             Whether or not to print information. The default is False.
 
@@ -519,20 +522,20 @@ class PermutationCorrelator(Correlator):
         >>> float(sp.stats.pearsonr(*X.T).statistic)
         0.1573...
         >>> correlation_matrix = np.array([[1, 0.7], [0.7, 1]])
-        >>> perm_trans = PermutationCorrelator(seed=0).set_target(correlation_matrix)
+        >>> perm_trans = Permutation(random_state=0).set_target(correlation_matrix)
         >>> X_transformed = perm_trans(X)
         >>> float(sp.stats.pearsonr(*X_transformed.T).statistic)
         0.6832...
 
         For large matrices, it often makes sense to first use Iman-Conover
-        to get a good initial solution, then give it to PermutationCorrelator.
+        to get a good initial solution, then give it to Permutation.
         Start by creating a large correlation matrix:
 
         >>> variables = 25
         >>> correlation_matrix = np.ones((variables, variables)) * 0.7
         >>> np.fill_diagonal(correlation_matrix, 1.0)
-        >>> perm_trans = PermutationCorrelator(iterations=250, tol=1e-6,
-        ...                                    seed=0, verbose=True)
+        >>> perm_trans = Permutation(iterations=250, tol=1e-6,
+        ...                                    random_state=0, verbose=True)
         >>> perm_trans = perm_trans.set_target(correlation_matrix)
 
         Create data X, then transform using Iman-Conover:
@@ -567,14 +570,12 @@ class PermutationCorrelator(Correlator):
             raise ValueError("`iterations` must be non-negative integer.")
         if not isinstance(tol, float) and tol > 0:
             raise ValueError("`tol` must be a positive float.")
-        if not (seed is None or isinstance(seed, int)):
-            raise TypeError("`seed` must be None or an integer")
         if not isinstance(verbose, bool):
             raise TypeError("`verbose` must be boolean")
 
         self.iters = iterations
         self.tol = tol
-        self.rng = np.random.default_rng(seed)
+        self.rng = np.random.default_rng(random_state)
         self.verbose = verbose
         self.correlation_type = correlation_type
 
@@ -921,6 +922,26 @@ class CorrelationMatrix:
         return self.corr_mat[:, col] + delta
 
 
+@dataclasses.dataclass(init=False, repr=True, eq=False)
+class Composite(Correlator):
+    """A composition where we first run ImanConover, then Permutation."""
+
+    def __init__(self, *args, **kwargs):
+        self.iman_conover_correlator = ImanConover()
+        self.permutation_correlator = Permutation(*args, **kwargs)
+
+    def set_target(self, correlation_matrix, *, weights=None):
+        self.iman_conover_correlator.set_target(correlation_matrix)
+        self.permutation_correlator.set_target(correlation_matrix, weights=weights)
+        return self
+
+    def __call__(self, X):
+        # First run ImanConover to get a good starting point
+        X_ic = self.iman_conover_correlator(X)
+        # Then run Permutation
+        return self.permutation_correlator(X_ic)
+
+
 if __name__ == "__main__":
     import pytest
     import matplotlib.pyplot as plt
@@ -960,7 +981,7 @@ if __name__ == "__main__":
         np.fill_diagonal(target, 1.0)
 
         # Create permutation correlator
-        correlator = PermutationCorrelator(verbose=True, tol=1e-4, iterations=10_000)
+        correlator = Permutation(verbose=True, tol=1e-4, iterations=10_000)
         correlator.set_target(target)
 
         # First try cholesky and
@@ -986,8 +1007,8 @@ if __name__ == "__main__":
         X_pc = correlator(X)
         corr_X_pc = np.corrcoef(X_pc, rowvar=False)
         error = correlator._error(corr_X_pc, target)
-        print(f"PermutationCorrelator error: {error:.4f}")
+        print(f"Permutation error: {error:.4f}")
         plt.figure(figsize=(4, 4))
-        plt.title(f"PermutationCorrelator error: {error:.4f}")
+        plt.title(f"Permutation error: {error:.4f}")
         plt.scatter(X_pc[:, 0], X_pc[:, 1], s=1)
         plt.show()
