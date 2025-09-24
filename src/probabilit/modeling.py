@@ -546,7 +546,7 @@ class Node(abc.ABC):
         )
 
     def sample_from_quantiles(
-        self, quantiles, correlator="composite", gc_strategy=None, random_state=None
+        self, quantiles, *, correlator="composite", gc_strategy=None, random_state=None
     ):
         """Use samples from an array of quantiles in [0, 1] to sample all
         distributions. The array must have shape (dimensionality, num_samples)."""

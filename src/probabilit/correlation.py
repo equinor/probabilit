@@ -159,7 +159,7 @@ def _is_positive_definite(X):
 
 
 class Correlator(abc.ABC):
-    def set_target(self, correlation_matrix):
+    def set_target(self, correlation_matrix, cholesky=True):
         """Set target correlation matrix."""
         if not isinstance(correlation_matrix, np.ndarray):
             raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
@@ -175,12 +175,13 @@ class Correlator(abc.ABC):
             raise ValueError("Correlation matrix must be positive definite.")
 
         self.C = correlation_matrix.copy()
-        self.P = np.linalg.cholesky(self.C)
+        if cholesky:
+            self.P = np.linalg.cholesky(self.C)
         return self
 
     def _validate_X(self, X, check_rows_cols=True):
         """Validate array X of shape (observations, variables)."""
-        if not (hasattr(self, "C") and hasattr(self, "P")):
+        if not (hasattr(self, "C")):
             raise CorrelatorError("User must call `set_target` first.")
 
         if not isinstance(X, np.ndarray):
@@ -190,7 +191,7 @@ class Correlator(abc.ABC):
 
         N, K = X.shape
 
-        if self.P.shape[0] != K:
+        if self.C.shape[0] != K:
             msg = f"Shape of `X` ({X.shape}) does not match shape of "
             msg += f"correlation matrix ({self.P.shape})"
             raise ValueError(msg)
@@ -590,7 +591,7 @@ class Permutation(Correlator):
             A weight matrix, with shape (variables, variables).
             The default is None, which corresponds to 1 in every entry.
         """
-        super().set_target(correlation_matrix)
+        super().set_target(correlation_matrix, cholesky=False)
         weights = np.ones_like(self.C) if weights is None else weights
         self.weights = weights / np.sum(weights)
         self.triu_indices = np.triu_indices(self.C.shape[0], k=1)
