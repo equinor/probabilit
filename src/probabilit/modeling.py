@@ -137,7 +137,7 @@ descendant of the nodes you wish to correlate:
 We can verify that the correlation is close to the desired value of 0.5:
 
 >>> float(pearsonr(a.samples_, b.samples_).statistic)
-0.42817...
+0.49245...
 
 
 Multivariate distributions
@@ -272,7 +272,13 @@ import abc
 import itertools
 import networkx as nx
 from scipy._lib._util import check_random_state
-from probabilit.correlation import nearest_correlation_matrix, ImanConover, Cholesky
+from probabilit.correlation import (
+    nearest_correlation_matrix,
+    ImanConover,
+    Cholesky,
+    Composite,
+    Permutation,
+)
 from probabilit.utils import build_corrmat, zip_args
 from probabilit.garbage_collector import GarbageCollector
 import copy
@@ -444,13 +450,39 @@ class Node(abc.ABC):
 
     def sample(
         self,
-        size=None,
+        size=1,
+        *,
         random_state=None,
         method=None,
-        correlator="imanconover",
+        correlator="composite",
         gc_strategy=None,
     ):
-        """Sample the current node and assign to all node.samples_.
+        """Sample the current node and assign attribute `samples_` to nodes.
+
+        Parameters
+        ----------
+        size : int, optional
+            Number of samples to draw.
+        random_state : np.random.Generator, int or None, optional
+            A random state for the random number generator. The default is None.
+        method : str, optional
+            Sampling method, one of "lhs" (qmc.LatinHypercube), "halton"
+            (qmc.Halton) or "sobol" (qmc.Sobol). The default is None, which
+            means pseudo-random sampling.
+        correlator : Correlator or str, optional
+            A Correlator instance or a string in {"cholesky", "imanconover",
+           "permutation", "composite"}. The default is "composite", which first
+            runs Iman-Conover, then runs the Permutation correlator on the result.
+        gc_strategy : None or list, optional
+            If None, no garbage collection is performed and the attribute
+            `.samples_` will be set on all nodes. If an empty list [], then
+            all nodes except the final one will be garbage collected. If a list
+            of Node instances, then those will be garbage collected.
+
+        Returns
+        -------
+        np.ndarray
+            An array of samples, with length `size`.
 
         Examples
         --------
@@ -474,20 +506,24 @@ class Node(abc.ABC):
         >>> corr_mat = np.array([[1, 0.6], [0.6, 1]])
         >>> result = (a + b).correlate(a, b, corr_mat=corr_mat)
 
-        >>> s = result.sample(25, random_state=0, correlator=Cholesky)
+        >>> s = result.sample(25, random_state=0, correlator=Cholesky())
         >>> float(pearsonr(a.samples_, b.samples_).statistic)
         0.599999...
         >>> float(np.min(b.samples_)) # Cholesky does not preserve marginals!
         -0.35283...
 
-        >>> s = result.sample(25, random_state=0, correlator=ImanConover)
+        >>> s = result.sample(25, random_state=0, correlator=ImanConover())
         >>> float(pearsonr(a.samples_, b.samples_).statistic)
         0.617109...
         >>> float(np.min(b.samples_)) # ImanConover does preserve marginals
         0.062115...
         """
-        size = 1 if size is None else size
-        d = self.num_distribution_nodes()
+        if not isinstance(size, numbers.Integral):
+            raise TypeError("`size` must be a positive integer")
+        if not size > 0:
+            raise ValueError("`size` must be a positive integer")
+
+        d = self.num_distribution_nodes()  # Dimensionality of sampling
 
         # Draw a quantiles of random variables in [0, 1] using a method
         methods = {
@@ -503,11 +539,14 @@ class Node(abc.ABC):
             quantiles = sampler.random(n=size)
 
         return self.sample_from_quantiles(
-            quantiles, correlator=correlator, gc_strategy=gc_strategy
+            quantiles,
+            correlator=correlator,
+            gc_strategy=gc_strategy,
+            random_state=random_state,
         )
 
     def sample_from_quantiles(
-        self, quantiles, correlator="imanconover", gc_strategy=None
+        self, quantiles, *, correlator="composite", gc_strategy=None, random_state=None
     ):
         """Use samples from an array of quantiles in [0, 1] to sample all
         distributions. The array must have shape (dimensionality, num_samples)."""
@@ -516,9 +555,19 @@ class Node(abc.ABC):
         assert n_dim == self.num_distribution_nodes()
 
         # Get the correct correlator class based on strings
-        CORRELATOR_MAP = {"imanconover": ImanConover, "cholesky": Cholesky}
+        CORRELATOR_MAP = {
+            "imanconover": ImanConover(),
+            "cholesky": Cholesky(),
+            "permutation": Permutation(random_state=random_state),
+            "composite": Composite(random_state=random_state),
+        }
         if isinstance(correlator, str):
-            correlator = CORRELATOR_MAP[correlator.lower()]
+            correlator = correlator.lower().strip()
+            if correlator not in CORRELATOR_MAP.keys():
+                raise ValueError(
+                    f"`{correlator=}` must be in {set(CORRELATOR_MAP.keys())}"
+                )
+            correlator = CORRELATOR_MAP[correlator]  # Map to instance
 
         # Prepare columns of quantiles, one column for each Distribution
         columns = iter(list(quantiles.T))
@@ -587,12 +636,12 @@ class Node(abc.ABC):
             correlation_matrix = build_corrmat(correlations)
             correlation_matrix = nearest_correlation_matrix(correlation_matrix)
 
-            # Create an instance of the correlator
-            correlator_instance = correlator().set_target(correlation_matrix)
+            # Set the target (goal) correlation matrix
+            correlator = correlator.set_target(correlation_matrix)
 
             # Concatenate samples, correlate them (shift rows in each col), then re-assign
             samples_input = np.vstack([var.samples_ for var in all_variables]).T
-            samples_ouput = correlator_instance(samples_input)
+            samples_ouput = correlator(samples_input)
             for var, sample in zip(all_variables, samples_ouput.T):
                 var.samples_ = np.copy(sample)
 
@@ -659,7 +708,7 @@ class Node(abc.ABC):
         >>> result = result.correlate(a, b, corr_mat=corr_mat)
         >>> _ = result.sample(999, random_state=0)
         >>> float(sp.stats.pearsonr(a.samples_, b.samples_).statistic)
-        0.433649...
+        0.483035...
 
         """
         assert corr_mat.ndim == 2
