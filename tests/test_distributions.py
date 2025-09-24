@@ -69,7 +69,7 @@ class TestLognormal:
     def test_lognormal_moments(self, mean, std):
         rng = np.random.default_rng(42)
         dist = Lognormal(mean, std)
-        samples = dist.sample(10000, rng)
+        samples = dist.sample(10000, random_state=rng)
 
         np.testing.assert_allclose(np.mean(samples), mean, rtol=0.05)
         np.testing.assert_allclose(np.std(samples), std, rtol=0.05)
@@ -85,7 +85,7 @@ class TestLognormal:
     def test_lognormal_from_log_params_moments(self, mu, sigma):
         rng = np.random.default_rng(42)
         dist = Lognormal.from_log_params(mu, sigma)
-        samples = dist.sample(10000, rng)
+        samples = dist.sample(10000, random_state=rng)
 
         # Calculate expected moments from log-space parameters
         expected_mean = np.exp(mu + sigma**2 / 2)
@@ -122,7 +122,7 @@ class TestUniform:
     def test_uniform_properties(self, min_val, max_val):
         rng = np.random.default_rng(42)
         dist = Uniform(min_val, max_val)
-        samples = dist.sample(10000, rng)
+        samples = dist.sample(10000, random_state=rng)
 
         # Test that all samples are within bounds
         assert np.all(samples >= min_val)

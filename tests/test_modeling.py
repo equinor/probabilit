@@ -117,7 +117,9 @@ class TestModelingExamples:
             )
 
         num_samples = 1000
-        res_total_person_hours = total_person_hours.sample(num_samples, rng)
+        res_total_person_hours = total_person_hours.sample(
+            num_samples, random_state=rng
+        )
 
         # The mean and standard deviation of a Triangular(3.75, 4.25, 5.5) are 4.5 and 0.368,
         # so by the Central Limit Theoreom we have that
@@ -181,7 +183,7 @@ class TestModelingExamples:
         )
 
         # Generate samples
-        owc2_samples = owc2.sample(n_samples, rng)
+        owc2_samples = owc2.sample(n_samples, random_state=rng)
 
         # Get individual component samples for verification
         owc1_samples = owc1.samples_
