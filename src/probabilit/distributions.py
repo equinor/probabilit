@@ -113,8 +113,6 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     # A few comments on fitting can be found here:
     # https://docs.analytica.com/index.php/Triangular10_50_90
 
-    if not (low < mode < high):
-        raise ValueError(f"Must have {low=} < {mode=} < {high=}")
     if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
