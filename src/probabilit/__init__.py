@@ -7,9 +7,10 @@ from probabilit.modeling import (
     Equal,
     scalar_transform,
     MultivariateDistribution,
+    NoOp,
 )
 from probabilit.distributions import PERT
-from probabilit.inspection import plot
+from probabilit.inspection import plot, tree
 
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "Equal",
     "scalar_transform",
     "MultivariateDistribution",
+    "NoOp",
     "PERT",
     "plot",
+    "tree"
 ]
