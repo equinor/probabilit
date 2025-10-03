@@ -13,7 +13,7 @@ authors = [
     { name = "Knut"},
     { name = "Feda"}
 ]
-license = {text = "GPL-3.0-only"}
+license = "GPL-3.0-only"
 dependencies = [
 "numpy>=2",
 "scipy",
