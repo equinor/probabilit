@@ -62,14 +62,14 @@ def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
     return seaborn.pairplot(df, **kwargs)
 
 
-def treeprint(node):
+def tree(node):
     """Print a computational graph in a tree-like fashion.
 
     Examples
     --------
     >>> scale = Distribution("expon")
     >>> a = Distribution("norm", loc=1, scale=scale)
-    >>> treeprint(a + scale - scale**2)
+    >>> tree(a + scale - scale**2)
     Subtract
        ├──Add
        │  ├──Distribution("norm", loc=1, scale=Distribution("expon"))
