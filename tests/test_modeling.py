@@ -211,6 +211,47 @@ class TestModelingExamples:
         assert open_fault_count > 0, "Should have some samples with open fault"
         assert closed_fault_count > 0, "Should have some samples with closed fault"
 
+    def test_stopping_distance_problem(self):
+        """A car is driving at a speed of 100 km / hour. Suddenly it has to slam
+        the breaks. What is the breaking distance of the car?
+
+        The main uncertainty is the speed and the coefficient of friction.
+        For fun we can also account for some variation in the gravitational
+        constant g, since it depends on altitude and where on earth we are."""
+
+        # The kinetic energy is E = 1/2 m v^2
+        # The breaking for has to stop this energy
+        # Energy = force x distance
+        # 1/2 m v^2 = (mu g m) x distance
+        # distance = v^2 / (2 mu g)
+
+        # Around 3% relative error, but on multiplicative scale
+        velocity_kmh = Exp(Distribution("norm", 0, 0.03)) * 100
+        velocity_ms = velocity_kmh / 3.6  # Convert to meters per second
+        g = Distribution("norm", loc=9.8220, scale=0.0020)
+
+        # On dry concrete/asphalt, around 0.7 is reasonable
+        # https://en.wikibooks.org/wiki/Physics_Study_Guide/Frictional_coefficients
+        mu_dry = Distribution("norm", loc=0.7, scale=0.02)
+        distance_dry = velocity_ms**2 / (2 * mu_dry * g)
+
+        # Sample and create a simple regression/snapshot test
+        samples = distance_dry.sample(999, random_state=42, method="lhs")
+        np.testing.assert_allclose(np.mean(samples), 56.258925)
+        np.testing.assert_allclose(np.std(samples), 3.707973)
+
+        # On wet concrete mu=0.58, but on wet asphalt mu = 0.53.
+        # Here we model a 50/50 chance of being on either (mixture distribution)
+        # and a sigma of 0.02 either way.
+        is_concrete = Distribution("bernoulli", p=0.5)
+        mu_wet = Distribution("norm", loc=0.53, scale=0.02) + 0.05 * is_concrete
+        distance_wet = velocity_ms**2 / (2 * mu_wet * g)
+
+        # Sample and create a simple regression/snapshot test
+        samples = distance_wet.sample(999, random_state=42, method="lhs")
+        np.testing.assert_allclose(np.mean(samples), 71.13491)
+        np.testing.assert_allclose(np.std(samples), 5.830891)
+
 
 def test_copying():
     # Create a graph
