@@ -1,3 +1,34 @@
+"""
+Probabilit uses distributions implemented in SciPy by default, e.g.:
+
+>>> normal = Distribution("norm", loc=0, scale=1)
+>>> gamma = Distribution("gamma", a=1)
+>>> generalized_pareto = Distribution("genpareto", c=2)
+
+For a full list, see:
+
+  - https://docs.scipy.org/doc/scipy/reference/stats.html#continuous-distributions
+
+In some cases it might make sense to implement our own custom distributions.
+CUSTOM DISTRIBUTIONS SHOULD BE IMPLEMENTED SPARINGLY. WE DO NOT WANT TO GO DOWN
+THE PATH OF RE-IMPLEMENTING SCIPY. For better or worse, scipy is a de-facto
+standard and many are used to it. Using scipy also delegates documentation burden.
+
+Some reasons to to this:
+
+  1. Better naming and easier API, e.g. `Normal(...)` vs `Distribution("norm", ...)`
+  2. Alternative parametrizations (typical example is the LogNorm)
+  3. Distributions not found in SciPy
+
+Most of the custom distributions are syntactic sugar:
+
+>>> Distribution("uniform", loc=-1, scale=2)
+Distribution("uniform", loc=-1, scale=2)
+>>> Uniform(min=-1, max=1)
+Distribution("uniform", loc=-1, scale=2)
+
+"""
+
 import numpy as np
 import warnings
 import scipy as sp
@@ -14,7 +45,7 @@ def Normal(loc, scale):
     return Distribution("norm", loc=loc, scale=scale)
 
 
-def TruncatedNormal(loc, scale, low, high):
+def TruncatedNormal(loc, scale, low=-np.inf, high=np.inf):
     """A truncated Normal distribution parametrized by mean (loc) and
     std (scale) defined on [low, high).
 
