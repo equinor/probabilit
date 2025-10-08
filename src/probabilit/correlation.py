@@ -674,7 +674,7 @@ class Permutation(Correlator):
         # Main loop. For each iteration, k cycles through all variables.
         # This parametrizes the algorithm so iterations is less sensitive to k.
         for iteration, k in loop_gen:
-            print_iter = iteration % (self.iters // 10) if self.iters else 1000
+            print_iter = iteration % max(self.iters // 10, 1) if self.iters else 1000
             num_swaps = self.subiters(
                 n=self.iters if self.iters else 10_000, i=iteration
             )
