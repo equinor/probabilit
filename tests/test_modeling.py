@@ -389,6 +389,23 @@ def test_correlations():
     np.testing.assert_allclose(observed_corr_mat, desired_corr_mat, atol=0.075)
 
 
+def test_all_correlations_at_unity():
+    # 1. Test that a correlation matrices with all entries at 1.0 works
+    # 2. Test that the resulting observed matrix is very close
+
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
+    expression = a + b + c
+
+    corr_mat = np.ones((3, 3))
+    expression.correlate(a, b, c, corr_mat=corr_mat)
+    expression.sample(999, random_state=42, method="lhs")
+
+    obs_corr = np.corrcoef(np.array([a.samples_, b.samples_, c.samples_]))
+    assert np.linalg.norm(obs_corr - corr_mat) <= 0.00015
+
+
 if __name__ == "__main__":
     import pytest
 
