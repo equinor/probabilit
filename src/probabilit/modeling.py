@@ -870,7 +870,7 @@ class Distribution(AbstractDistribution):
             out += f", {kwargs}"
         return out + ")"
 
-    def _sample(self, q):
+    def to_scipy(self):
         def unpack(arg):
             """Unpack distribution arguments (parents) to arrays if Node."""
             return arg.samples_ if isinstance(arg, Node) else arg
@@ -879,15 +879,20 @@ class Distribution(AbstractDistribution):
         args = tuple(unpack(arg) for arg in self.args)
         kwargs = {k: unpack(v) for (k, v) in self.kwargs.items()}
 
-        # Sample from the distribution with inverse CDF
-        distribution = getattr(stats, self.distr)
         try:
-            return distribution(*args, **kwargs).ppf(q)
+            distribution = getattr(stats, self.distr)
+            return distribution(*args, **kwargs)
+        except AttributeError:
+            raise AttributeError(f"{self.distr} is not a valid scipy distribution")
+
+    def _sample(self, q):
+        try:
+            return self.to_scipy().ppf(q)
         except AttributeError:
             # Multivariate distributions do not have .ppf()
             # isinstance(distribution, (multi_rv_generic, multi_rv_frozen))
             seed = int(q[0] * 2**20)  # Seed based on q
-            return distribution(*args, **kwargs).rvs(size=len(q), random_state=seed)
+            return self.to_scipy().rvs(size=len(q), random_state=seed)
 
     def get_parents(self):
         # A distribution only has parents if it has parameters that are Nodes
