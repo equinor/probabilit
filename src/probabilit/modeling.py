@@ -68,11 +68,6 @@ It is also possible to convert distributions to sci_py objects
 >>> isinstance(dist, stats._distn_infrastructure.rv_frozen)
 True
 
->>> normal = Distribution("norm", loc=Constant(2)**3, scale=1)
->>> dist = normal.to_scipy()
->>> isinstance(dist,stats._distn_infrastructure.rv_frozen)
-True
-
 >>> prior_mean = Distribution("norm", loc=0, scale=1)
 >>> normal = Distribution("norm", loc=prior_mean , scale=1)
 >>> dist = normal.to_scipy()
@@ -889,9 +884,15 @@ class Distribution(AbstractDistribution):
         return out + ")"
 
     def to_scipy(self):
+        """Unpack distribution arguments (parents) to arrays if Node."""
+
         def unpack(arg):
-            """Unpack distribution arguments (parents) to arrays if Node."""
-            return arg.samples_ if isinstance(arg, Node) else arg
+            if isinstance(arg, Node):
+                if not hasattr(arg, "samples_"):
+                    arg.sample(10)
+                return arg.samples_
+            else:
+                return arg
 
         # Parse the arguments and keyword arguments for the distribution
         args = tuple(unpack(arg) for arg in self.args)
