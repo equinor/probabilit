@@ -61,6 +61,18 @@ Let us build a more complicated expression with distributions:
 >>> b = Distribution("expon", scale=1)
 >>> expression = a**b + a * b + 5 * b
 
+It is possible to convert all initial sampling nodes to scipy objects
+
+>>> normal = Distribution("norm", loc=0, scale=1)
+>>> dist = normal.to_scipy() # The trivial case
+>>> isinstance(dist,stats._distn_infrastructure.rv_frozen)
+True
+
+>>> normal = Distribution("norm", loc=Constant(2)**3, scale=1)
+>>> dist = normal.to_scipy() # Parent nodes are probabilit nodes too, but normal is an initial sampling node
+>>> isinstance(dist,stats._distn_infrastructure.rv_frozen)
+True
+
 Every unique node in this expression can be found by calling `.nodes()`:
 
 >>> for node in sorted(set(expression.nodes()), key=lambda n:n._id):
@@ -869,6 +881,15 @@ class Distribution(AbstractDistribution):
         if kwargs:
             out += f", {kwargs}"
         return out + ")"
+
+    def to_scipy(self):
+        if not self._is_initial_sampling_node():
+            raise Exception("Compound distributions cannot be converted to scipy")
+        try:
+            distribution = getattr(stats, self.distr)
+            return distribution(*self.args, **self.kwargs)
+        except AttributeError:
+            raise AttributeError(f"{self.distr!r} is not a valid scipy distribution")
 
     def _sample(self, q):
         def unpack(arg):
