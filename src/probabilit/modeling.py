@@ -311,15 +311,15 @@ def python_to_prob(argument):
 # =============================================================================
 #
 # There are three main types of Node instances, they are:
-#   - Constant:      numbers like 2 or 5.5, which are always source nodes
-#   - Distribution:  typically source nodes, but can be non-source if composite
-#   - Transform:     arithmetic operations like + or **, or general functions
+#   - Constant:      numbers like 2 or 5.5, which are always leaves in the graph
+#   - Distribution:  typically leaves, but can have parents if composite
+#   - Transform:     arithmetic operations like + or **, or general functions,
+#                    must always have parents
 #
-# |              | source node | non-source node |
+# |              | leaf        | has parents     |
 # |--------------|-------------|-----------------|
-# | Constant     |             | N/A             |
-# | Distribution |             |                 |
-# | Transform    | N/A         |                 |
+# | Constant     | yes         | no              |
+# | Transform    | no          | yes             |
 #
 # An expression such as:
 #
@@ -341,14 +341,13 @@ def python_to_prob(argument):
 #               (result)
 #
 # Where:
-#   * "mu" is a Distribution and a source node
-#   * "b" is a Distribution, but not a source node
-#   * "+" is a Transform
-#   * "2" is a Constant and a source node
-#   * "-" (the result) is a Transform
+#   * "mu" is a Distribution and a leaf
+#   * "normal" is a Distribution, but not a leaf (has "mu" as parent)
+#   * "+" is a Transform (has "mu" and "normal" as parents)
+#   * "2" is a Constant and a leaf
+#   * "-" (the result) is a Transform (has "+" and "2" as parents)
 #
 # Some further terminology:
-#   * The _parents_ of node "-" are {"+", "2"}
 #   * The _ancestors_ of node "-" are {"+", "2", "mu", "normal"}
 #   * A node is said to be an _initial sampling node_ iff
 #      (1) The node is a Distribution
@@ -357,6 +356,24 @@ def python_to_prob(argument):
 #     Initial sampling nodes are the nodes that we can impose correlations on.
 #     We cannot impose correlations on "normal" above, since its correlation
 #     is determined by the graph structure.
+#   * result.sample() samples the expression "mu + normal - 2" by propagating
+#     through the graph, parents first. More specifically, each category of nodes
+#     (Constant, Transform and Distribution) have their own internal _sample methods
+#     and we propagate the sampling of the graph in the following way:
+#      (1) "mu" is sampled first by calling the internal _sample method
+#          of the Distribution class.
+#      (2) Then "normal" is sampled using the samples of "mu" and the same
+#          _sample method as in (1).
+#      (3) Thereafter "+" is sampled using the samples of both "mu" and "normal"
+#          and the internal _sample method of the Transform class.
+#      (4) Finally, "-" is sampled last, using the samples of "+" and "2",
+#          and the same _sample method as in (3).
+#     It does not matter when the node "2" is sampled, as it does not have
+#     any parents (in fact this is true of all nodes of type Constant).
+#     A topological ordering of the graph makes sure that parents are always
+#     sampled first, and the internal _sample methods of the Distributon and
+#     the Transform class rely on the samples of parent nodes (in the case where
+#     parents exist).
 
 
 class Node(abc.ABC):
