@@ -368,8 +368,8 @@ def python_to_prob(argument):
 #          and the internal _sample method of the Transform class.
 #      (4) Finally, "-" is sampled last, using the samples of "+" and "2",
 #          and the same _sample method as in (3).
-#     It does not matter when the node "2" is sampled, as it does not have
-#     any parents (in fact this is true for all nodes of type Constant).
+#     Since the node "2" has no parents (as is the case for all Constant nodes),
+#     it can be sampled at any time prior to sampling "-".
 #     A topological ordering of the graph makes sure that parents are always
 #     sampled first, and the internal _sample methods of the Distributon and
 #     the Transform class rely on the samples of parent nodes (in the case where
