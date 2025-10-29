@@ -61,17 +61,12 @@ Let us build a more complicated expression with distributions:
 >>> b = Distribution("expon", scale=1)
 >>> expression = a**b + a * b + 5 * b
 
-It is possible to convert all initial sampling nodes to scipy objects
-
->>> normal = Distribution("norm", loc=0, scale=1)
->>> dist = normal.to_scipy() # The trivial case
->>> isinstance(dist,stats._distn_infrastructure.rv_frozen)
-True
+It is possible to convert distributions to scipy objects
 
 >>> normal = Distribution("norm", loc=Constant(2)**3, scale=1)
->>> dist = normal.to_scipy() # Parent nodes are probabilit nodes too, but normal is an initial sampling node
->>> isinstance(dist,stats._distn_infrastructure.rv_frozen)
-True
+>>> dist = normal.to_scipy()
+>>> dist.rvs(5, random_state=42)
+array([8.49671415, 7.8617357 , 8.64768854, 9.52302986, 7.76584663])
 
 Every unique node in this expression can be found by calling `.nodes()`:
 
@@ -884,12 +879,26 @@ class Distribution(AbstractDistribution):
 
     def to_scipy(self):
         if not self._is_initial_sampling_node():
-            raise Exception("Compound distributions cannot be converted to scipy")
+            raise Exception(
+                "To convert a distribution to a scipy object, "
+                "it must be an initial sampling node (no ancestors can be Distributions)"
+            )
+
+        node = self.copy()  # do not mutate self
+
         try:
-            distribution = getattr(stats, self.distr)
-            return distribution(*self.args, **self.kwargs)
+            distribution = getattr(stats, node.distr)
         except AttributeError:
             raise AttributeError(f"{self.distr!r} is not a valid scipy distribution")
+
+        def to_number(arg):
+            """Unpack argument to a number in case parents are Constant/Transform"""
+            return arg.sample(1)[0] if isinstance(arg, Node) else arg
+
+        args = tuple(to_number(arg) for arg in node.args)
+        kwargs = {k: to_number(v) for (k, v) in node.kwargs.items()}
+
+        return distribution(*args, **kwargs)
 
     def _sample(self, q):
         def unpack(arg):
@@ -1367,7 +1376,9 @@ def MultivariateDistribution(distr, *args, **kwargs):
 if __name__ == "__main__":
     import pytest
 
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
+    pass
+
+    # pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
