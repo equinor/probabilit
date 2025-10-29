@@ -1376,9 +1376,7 @@ def MultivariateDistribution(distr, *args, **kwargs):
 if __name__ == "__main__":
     import pytest
 
-    pass
-
-    # pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
 
 if __name__ == "__main__":
     rng = np.random.default_rng(42)
