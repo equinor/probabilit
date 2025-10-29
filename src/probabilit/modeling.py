@@ -364,12 +364,12 @@ def python_to_prob(argument):
 #          of the Distribution class.
 #      (2) Then "normal" is sampled using the samples of "mu" and the same
 #          _sample method as in (1).
-#      (3) Thereafter "+" is sampled using the samples of both "mu" and "normal"
+#      (3) Thereafter, "+" is sampled using the samples of both "mu" and "normal",
 #          and the internal _sample method of the Transform class.
 #      (4) Finally, "-" is sampled last, using the samples of "+" and "2",
 #          and the same _sample method as in (3).
 #     It does not matter when the node "2" is sampled, as it does not have
-#     any parents (in fact this is true of all nodes of type Constant).
+#     any parents (in fact this is true for all nodes of type Constant).
 #     A topological ordering of the graph makes sure that parents are always
 #     sampled first, and the internal _sample methods of the Distributon and
 #     the Transform class rely on the samples of parent nodes (in the case where
