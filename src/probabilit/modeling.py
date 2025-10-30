@@ -151,7 +151,7 @@ Multivariate distributions
 --------------------------
 Support for multivariate distributions (MVD) is implemented, but is limited:
 
-  1. the MVD must be a leaf node (its arguments cannot be other distributions)
+  1. the MVD must be a source node (its arguments cannot be other distributions)
   2. its return values *must* be unpacked as marginals (slices)
   3. only pseudo-random sampling is possible (LHS, Sobol, etc. is ignored)
 
@@ -311,15 +311,10 @@ def python_to_prob(argument):
 # =============================================================================
 #
 # There are three main types of Node instances, they are:
-#   - Constant:      numbers like 2 or 5.5, which are always leaves in the graph
-#   - Distribution:  typically leaves, but can have parents if composite
+#   - Constant:      numbers like 2 or 5.5, which are always source nodes in the graph
+#   - Distribution:  typically source nodes, but can have parents if composite
 #   - Transform:     arithmetic operations like + or **, or general functions,
 #                    must always have parents
-#
-# |              | leaf        | has parents     |
-# |--------------|-------------|-----------------|
-# | Constant     | yes         | no              |
-# | Transform    | no          | yes             |
 #
 # An expression such as:
 #
@@ -341,10 +336,10 @@ def python_to_prob(argument):
 #               (result)
 #
 # Where:
-#   * "mu" is a Distribution and a leaf
-#   * "normal" is a Distribution, but not a leaf (has "mu" as parent)
+#   * "mu" is a Distribution and a source node
+#   * "normal" is a Distribution, but not a source node (has "mu" as parent)
 #   * "+" is a Transform (has "mu" and "normal" as parents)
-#   * "2" is a Constant and a leaf
+#   * "2" is a Constant and a source node
 #   * "-" (the result) is a Transform (has "+" and "2" as parents)
 #
 # Some further terminology:
@@ -669,7 +664,7 @@ class Node(abc.ABC):
             for var, sample in zip(all_variables, samples_ouput.T):
                 var.samples_ = np.copy(sample)
 
-        # Iterate from leaf nodes and up to parent
+        # Iterate sampling though the graph
         for node in nx.topological_sort(G):
             if hasattr(node, "samples_"):  # Skip if samples already exists
                 pass
@@ -769,7 +764,7 @@ class Node(abc.ABC):
             (ancestor, node)
             for node in nodes
             for ancestor in node.get_parents()
-            if not node.is_leaf
+            if not node.is_source_node
         ]
         return nx.MultiDiGraph(edge_list)
 
@@ -853,7 +848,7 @@ class Constant(Node, OverloadMixin):
     array(['car', 'car', 'car', 'car', 'car'], dtype='<U3')
     """
 
-    is_leaf = True  # A Constant is always a leaf node
+    is_source_node = True  # A Constant is always a source node
 
     def __init__(self, value):
         self.value = value.value if isinstance(value, Constant) else value
@@ -943,7 +938,7 @@ class Distribution(AbstractDistribution):
                 yield arg
 
     @property
-    def is_leaf(self):
+    def is_source_node(self):
         return list(self.get_parents()) == []
 
 
@@ -952,7 +947,7 @@ class EmpiricalDistribution(AbstractDistribution):
 
     A thin wrapper around numpy.quantile."""
 
-    is_leaf = True
+    is_source_node = True
 
     def __init__(self, data, **kwargs):
         self.data = np.array(data)
@@ -983,7 +978,7 @@ class CumulativeDistribution(AbstractDistribution):
            13.89986301, 11.4520903 , 21.65440364, 18.3426251 ])
     """
 
-    is_leaf = True
+    is_source_node = True
 
     def __init__(self, quantiles, cumulatives):
         self.q = np.array(quantiles)
@@ -1020,7 +1015,7 @@ class DiscreteDistribution(AbstractDistribution):
     array(['C', 'F', 'E', 'D', 'A', 'A', 'A', 'F', 'D'], dtype='<U1')
     """
 
-    is_leaf = True
+    is_source_node = True
 
     def __init__(self, values, probabilities=None):
         self.values = np.array(values)
@@ -1058,7 +1053,7 @@ class DiscreteDistribution(AbstractDistribution):
 class Transform(Node, OverloadMixin, abc.ABC):
     """Transform nodes represent arithmetic operations."""
 
-    is_leaf = False
+    is_source_node = False
 
     def __repr__(self):
         parents = ", ".join(repr(parent) for parent in self.get_parents())
@@ -1350,7 +1345,7 @@ class MarginalDistribution(Transform):
     array([2, 1, 2, 1, 1])
     """
 
-    is_leaf = False
+    is_source_node = False
 
     def __init__(self, distr, d):
         self.distr = distr
