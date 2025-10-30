@@ -61,6 +61,13 @@ Let us build a more complicated expression with distributions:
 >>> b = Distribution("expon", scale=1)
 >>> expression = a**b + a * b + 5 * b
 
+It is possible to convert distributions to scipy objects
+
+>>> normal = Distribution("norm", loc=Constant(2)**3, scale=1)
+>>> dist = normal.to_scipy()
+>>> dist.rvs(5, random_state=42)
+array([8.49671415, 7.8617357 , 8.64768854, 9.52302986, 7.76584663])
+
 Every unique node in this expression can be found by calling `.nodes()`:
 
 >>> for node in sorted(set(expression.nodes()), key=lambda n:n._id):
@@ -144,7 +151,7 @@ Multivariate distributions
 --------------------------
 Support for multivariate distributions (MVD) is implemented, but is limited:
 
-  1. the MVD must be a leaf node (its arguments cannot be other distributions)
+  1. the MVD must be a source node (its arguments cannot be other distributions)
   2. its return values *must* be unpacked as marginals (slices)
   3. only pseudo-random sampling is possible (LHS, Sobol, etc. is ignored)
 
@@ -304,15 +311,10 @@ def python_to_prob(argument):
 # =============================================================================
 #
 # There are three main types of Node instances, they are:
-#   - Constant:      numbers like 2 or 5.5, which are always source nodes
-#   - Distribution:  typically source nodes, but can be non-source if composite
-#   - Transform:     arithmetic operations like + or **, or general functions
-#
-# |              | source node | non-source node |
-# |--------------|-------------|-----------------|
-# | Constant     |             | N/A             |
-# | Distribution |             |                 |
-# | Transform    | N/A         |                 |
+#   - Constant:      numbers like 2 or 5.5, which are always source nodes in the graph
+#   - Distribution:  typically source nodes, but can have parents if composite
+#   - Transform:     arithmetic operations like + or **, or general functions,
+#                    must always have parents
 #
 # An expression such as:
 #
@@ -335,13 +337,12 @@ def python_to_prob(argument):
 #
 # Where:
 #   * "mu" is a Distribution and a source node
-#   * "b" is a Distribution, but not a source node
-#   * "+" is a Transform
+#   * "normal" is a Distribution, but not a source node (has "mu" as parent)
+#   * "+" is a Transform (has "mu" and "normal" as parents)
 #   * "2" is a Constant and a source node
-#   * "-" (the result) is a Transform
+#   * "-" (the result) is a Transform (has "+" and "2" as parents)
 #
 # Some further terminology:
-#   * The _parents_ of node "-" are {"+", "2"}
 #   * The _ancestors_ of node "-" are {"+", "2", "mu", "normal"}
 #   * A node is said to be an _initial sampling node_ iff
 #      (1) The node is a Distribution
@@ -350,6 +351,24 @@ def python_to_prob(argument):
 #     Initial sampling nodes are the nodes that we can impose correlations on.
 #     We cannot impose correlations on "normal" above, since its correlation
 #     is determined by the graph structure.
+#   * result.sample() samples the expression "mu + normal - 2" by propagating
+#     through the graph, parents first. More specifically, each category of nodes
+#     (Constant, Transform and Distribution) have their own internal _sample methods
+#     and we propagate the sampling of the graph in the following way:
+#      (1) "mu" is sampled first by calling the internal _sample method
+#          of the Distribution class.
+#      (2) Then "normal" is sampled using the samples of "mu" and the same
+#          _sample method as in (1).
+#      (3) Thereafter, "+" is sampled using the samples of both "mu" and "normal",
+#          and the internal _sample method of the Transform class.
+#      (4) Finally, "-" is sampled last, using the samples of "+" and "2",
+#          and the same _sample method as in (3).
+#     Since the node "2" has no parents (as is the case for all Constant nodes),
+#     it can be sampled at any time prior to sampling "-".
+#     A topological ordering of the graph makes sure that parents are always
+#     sampled first, and the internal _sample methods of the Distributon and
+#     the Transform class rely on the samples of parent nodes (in the case where
+#     parents exist).
 
 
 class Node(abc.ABC):
@@ -645,7 +664,7 @@ class Node(abc.ABC):
             for var, sample in zip(all_variables, samples_ouput.T):
                 var.samples_ = np.copy(sample)
 
-        # Iterate from leaf nodes and up to parent
+        # Iterate sampling though the graph
         for node in nx.topological_sort(G):
             if hasattr(node, "samples_"):  # Skip if samples already exists
                 pass
@@ -745,7 +764,7 @@ class Node(abc.ABC):
             (ancestor, node)
             for node in nodes
             for ancestor in node.get_parents()
-            if not node.is_leaf
+            if not node.is_source_node
         ]
         return nx.MultiDiGraph(edge_list)
 
@@ -829,7 +848,7 @@ class Constant(Node, OverloadMixin):
     array(['car', 'car', 'car', 'car', 'car'], dtype='<U3')
     """
 
-    is_leaf = True  # A Constant is always a leaf node
+    is_source_node = True  # A Constant is always a source node
 
     def __init__(self, value):
         self.value = value.value if isinstance(value, Constant) else value
@@ -870,6 +889,29 @@ class Distribution(AbstractDistribution):
             out += f", {kwargs}"
         return out + ")"
 
+    def to_scipy(self):
+        if not self._is_initial_sampling_node():
+            raise Exception(
+                "To convert a distribution to a scipy object, "
+                "it must be an initial sampling node (no ancestors can be Distributions)"
+            )
+
+        node = self.copy()  # do not mutate self
+
+        try:
+            distribution = getattr(stats, node.distr)
+        except AttributeError:
+            raise AttributeError(f"{self.distr!r} is not a valid scipy distribution")
+
+        def to_number(arg):
+            """Unpack argument to a number in case parents are Constant/Transform"""
+            return arg.sample(1)[0] if isinstance(arg, Node) else arg
+
+        args = tuple(to_number(arg) for arg in node.args)
+        kwargs = {k: to_number(v) for (k, v) in node.kwargs.items()}
+
+        return distribution(*args, **kwargs)
+
     def _sample(self, q):
         def unpack(arg):
             """Unpack distribution arguments (parents) to arrays if Node."""
@@ -896,7 +938,7 @@ class Distribution(AbstractDistribution):
                 yield arg
 
     @property
-    def is_leaf(self):
+    def is_source_node(self):
         return list(self.get_parents()) == []
 
 
@@ -905,7 +947,7 @@ class EmpiricalDistribution(AbstractDistribution):
 
     A thin wrapper around numpy.quantile."""
 
-    is_leaf = True
+    is_source_node = True
 
     def __init__(self, data, **kwargs):
         self.data = np.array(data)
@@ -936,7 +978,7 @@ class CumulativeDistribution(AbstractDistribution):
            13.89986301, 11.4520903 , 21.65440364, 18.3426251 ])
     """
 
-    is_leaf = True
+    is_source_node = True
 
     def __init__(self, quantiles, cumulatives):
         self.q = np.array(quantiles)
@@ -973,7 +1015,7 @@ class DiscreteDistribution(AbstractDistribution):
     array(['C', 'F', 'E', 'D', 'A', 'A', 'A', 'F', 'D'], dtype='<U1')
     """
 
-    is_leaf = True
+    is_source_node = True
 
     def __init__(self, values, probabilities=None):
         self.values = np.array(values)
@@ -1011,7 +1053,7 @@ class DiscreteDistribution(AbstractDistribution):
 class Transform(Node, OverloadMixin, abc.ABC):
     """Transform nodes represent arithmetic operations."""
 
-    is_leaf = False
+    is_source_node = False
 
     def __repr__(self):
         parents = ", ".join(repr(parent) for parent in self.get_parents())
@@ -1303,7 +1345,7 @@ class MarginalDistribution(Transform):
     array([2, 1, 2, 1, 1])
     """
 
-    is_leaf = False
+    is_source_node = False
 
     def __init__(self, distr, d):
         self.distr = distr
