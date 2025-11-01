@@ -10,6 +10,15 @@ import pytest
 
 class TestModelingExamples:
     @pytest.mark.parametrize("method", (None, "lhs", "sobol", "halton"))
+    def test_hierarchical_model(self, method):
+        loc = Distribution("normal", np.pi, 1)
+        scale = np.e
+        x = Distribution("normal", loc, scale)
+        samples = sample(x, 999, method=method, random_state=42)
+        np.testing.assert_allclose(samples.mean(), np.pi, atol=0.1)
+        np.testing.assert_allclose(samples.std(), np.sqrt(1 + np.e**2), atol=0.1)
+
+    @pytest.mark.parametrize("method", (None, "lhs", "sobol", "halton"))
     def test_die_problem(self, method):
         """If we throw 2 die, what is the probability that each one ends up
         with the same number?"""

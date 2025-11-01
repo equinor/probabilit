@@ -105,7 +105,9 @@ def sample(
 
     if method is not None:
         # It's actually more strict, there should be one RV. Now there's 1 RNG for every RV, but it could change!
-        assert len(sym_rngs) <= 1, "There should be at most 1 RNG when using QMC"
+        if len(sym_rngs) > 1:
+            pytensor.dprint(nodes)
+            raise AssertionError("There should be at most 1 RNG when using QMC")
 
     if len(sym_rngs) > 0:
         rngs = np.random.default_rng(random_state).spawn(len(sym_rngs))
@@ -115,15 +117,15 @@ def sample(
     # Set batch size of RV nodes
     SIZE.set_value(size)
 
-    # TODO: Cache fn
+    # TODO: Cache fn for same nodes / methods
     fn = pytensor.function([], nodes, **(compile_kwargs or {}))
-    fn.dprint(print_shape=True)
     res = fn()
     return res if is_sequence else res[0]
 
 
-def toposort_replace(nodes, replacements):
-    fgraph = FunctionGraph(outputs=nodes, clone=False)
+def toposort_replace(
+    fgraph: FunctionGraph, replacements: dict[TensorVariable:TensorVariable]
+) -> None:
     toposort_index = {apply: i for i, apply in enumerate(fgraph.toposort())}
 
     def key_fn(x):
@@ -136,9 +138,9 @@ def toposort_replace(nodes, replacements):
     sorted_replacements = sorted(
         tuple(replacements.items()),
         key=key_fn,
+        reverse=True,
     )
     fgraph.replace_all(sorted_replacements, import_missing=True)
-    return fgraph.outputs
 
 
 class QMCRV(RandomVariable):
@@ -201,10 +203,10 @@ def replace_rvs_by_qmc_samples(nodes: list[TensorVariable], method: str):
     new_z = icdf_normal(qmc_samples[:, 2], new_x, new_y)
 
     """
+    fg = FunctionGraph(outputs=nodes, clone=True, copy_inputs=False)
+
     rvs_in_graph = [
-        v
-        for v in ancestors(nodes if isinstance(nodes, list | tuple) else nodes)
-        if (v.owner is not None and isinstance(v.owner.op, RandomVariable))
+        apply.out for apply in fg.apply_nodes if isinstance(apply.op, RandomVariable)
     ]
     # d = pt.prod([rv.size // SIZE for rv in rvs_in_graph])
     d = len(rvs_in_graph)
@@ -231,4 +233,5 @@ def replace_rvs_by_qmc_samples(nodes: list[TensorVariable], method: str):
         for i, rv in enumerate(rvs_in_graph)
     }
 
-    return toposort_replace(nodes, replacements)
+    toposort_replace(fg, replacements)
+    return fg.outputs
