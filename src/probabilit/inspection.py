@@ -80,22 +80,7 @@ def treeprint(node):
           └──Constant(2)
 
     """
-    elbow, pipe, tee, blank = "└──", "│  ", "├──", "   "
-
-    def _treeprint(node, last=True, header="", root=False):
-        # Recursive version
-        output = type(node).__name__ if isinstance(node, Transform) else str(node)
-        print(header + ("" if root else (elbow if last else tee)) + output)
-
-        if parents := list(node.get_parents()):
-            for i, parent in enumerate(parents):
-                _treeprint(
-                    parent,
-                    header=header + (blank if last else pipe),
-                    last=i == len(parents) - 1,
-                )
-
-    return _treeprint(node, last=True, header="", root=True)
+    retun node.dprint()
 
 
 if __name__ == "__main__":
