@@ -1,6 +1,6 @@
 from probabilit.sampling import sample
 from probabilit.modeling import EmpiricalDistribution, Constant
-from probabilit.math import Floor, Equal, All, Min, Max, Exp, Log
+from probabilit.math import Floor, Equal, All, Min, Max, Exp, Log, IF
 from probabilit.distributions import Distribution, Triangular
 import numpy as np
 
@@ -80,8 +80,9 @@ class TestModelingExamples:
         samples = sample(returns, 999, random_state=42)
 
         # Regression test essentially
-        np.testing.assert_allclose(samples.mean(), 76583.58738496085)
-        np.testing.assert_allclose(samples.std(), 33483.2245611436)
+        print(samples.mean(), samples.std())
+        np.testing.assert_allclose(samples.mean(), 77085.8183243356)
+        np.testing.assert_allclose(samples.std(), 33664.80313953588)
 
     def test_total_person_hours(self):
         """Based on Example 19.2 from Risk Analysis: A Quantitative Guide, 3rd Edition by David Vose.
@@ -140,14 +141,20 @@ class TestModelingExamples:
         # If they are twins, their height should be perfectly correlated
         is_twin = Distribution("bernoulli", p=0.1)
 
-        # height2 = IF(is_twin, height1, height2)
-        height2 = is_twin * height1 + (1 - is_twin) * height2
+        height2 = IF(is_twin, height1, height2)
 
         # This is the answer to the question
-        sample((abs(height2 - height1)), 999, random_state=42)
+        (
+            abs_diff_samples,
+            height1_samples,
+            height2_samples,
+        ) = sample([abs(height2 - height1), height1, height2], 999, random_state=42)
 
         # At least one of the realizations should be identical
-        assert np.any(np.isclose(height1.samples_, height2.samples_))
+        assert np.any(np.isclose(height1_samples, height2_samples))
+        np.testing.assert_allclose(
+            np.abs(height1_samples - height2_samples), abs_diff_samples
+        )
 
     def test_fault_controlled_owc_correlation(self):
         """
@@ -175,12 +182,9 @@ class TestModelingExamples:
         )
 
         # Generate samples
-        owc2_samples = sample(owc2, n_samples, random_state=rng)
-
-        # Get individual component samples for verification
-        owc1_samples = owc1.samples_
-        fault_samples = fault_is_open.samples_.astype(bool)
-        owc2_samples = owc2.samples_
+        (owc1_samples, fault_samples, owc2_samples) = sample(
+            [owc1, fault_is_open, owc2], n_samples, random_state=rng
+        )
 
         # Verify fault-controlled correlation
         for i in range(n_samples):
@@ -229,9 +233,8 @@ class TestModelingExamples:
 
         # Sample and create a simple regression/snapshot test
         samples = sample(distance_dry, 999, random_state=42, method="lhs")
-        print(np.mean(samples), np.std(samples))
         np.testing.assert_allclose(np.mean(samples), 55.98118937315399)
-        np.testing.assert_allclose(np.std(samples), 3.707973)
+        np.testing.assert_allclose(np.std(samples), 3.810850016422358)
 
         # On wet concrete mu=0.58, but on wet asphalt mu = 0.53.
         # Here we model a 50/50 chance of being on either (mixture distribution)
@@ -242,8 +245,9 @@ class TestModelingExamples:
 
         # Sample and create a simple regression/snapshot test
         samples = sample(distance_wet, 999, random_state=42, method="lhs")
-        np.testing.assert_allclose(np.mean(samples), 71.13491)
-        np.testing.assert_allclose(np.std(samples), 5.830891)
+        print(samples.mean(), samples.std())
+        np.testing.assert_allclose(np.mean(samples), 71.32497704280316)
+        np.testing.assert_allclose(np.std(samples), 6.025907656905284)
 
 
 def test_constant_arithmetic():

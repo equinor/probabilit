@@ -1,11 +1,12 @@
+from functools import reduce
 import pytensor.tensor as pt
 
 Add = pt.add
 Multiply = pt.mul
 Max = pt.maximum
 Min = pt.minimum
-All = pt.all
-Any = pt.any
+All = lambda *args: reduce(pt.and_, args)
+Any = pt.or_
 Avg = pt.mean
 NoOp = pt.identity
 FloorDivide = pt.floor_div
@@ -18,6 +19,7 @@ LessThanOrEqual = pt.le
 GreaterThan = pt.gt
 GreaterThanOrEqual = pt.ge
 IsClose = pt.isclose
+IF = pt.where
 
 Negative = pt.neg
 Abs = pt.abs

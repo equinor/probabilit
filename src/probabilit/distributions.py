@@ -34,7 +34,6 @@ import warnings
 import scipy as sp
 from probabilit.math import Log, Exp, Sign
 from probabilit.sampling import SIZE
-
 import pytensor.tensor as pt
 
 
@@ -54,6 +53,10 @@ def Distribution(name, *args, **kwargs):
             return pt.random.exponential(*args, size=SIZE, **kwargs)
         case "gamma":
             return pt.random.gamma(*args, size=SIZE, **kwargs)
+        case "bernoulli":
+            return pt.random.bernoulli(*args, size=SIZE, **kwargs)
+        case "triangular":
+            return pt.random.triangular(*args, size=SIZE, **kwargs)
         case _:
             raise ValueError(f"Unknown distribution {name}")
 

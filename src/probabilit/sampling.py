@@ -14,7 +14,7 @@ def sample(
     nodes,
     size=1,
     *,
-    random_state=None | np.random.Generator,
+    random_state=None,
     method=None,
     correlator="composite",
     compile_kwargs: dict | None = None,

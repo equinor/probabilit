@@ -837,33 +837,7 @@ class OverloadMixin:
     # both equality checks and __hash__.
 
 
-class Constant(Node, OverloadMixin):
-    """A constant is a number or a string. If the value is a string, sampling returns an array of the string value.
-
-    Examples
-    --------
-    >>> Constant(2)._sample(5)
-    array([2, 2, 2, 2, 2])
-    >>> Constant("car")._sample(5)
-    array(['car', 'car', 'car', 'car', 'car'], dtype='<U3')
-    """
-
-    is_source_node = True  # A Constant is always a source node
-
-    def __init__(self, value):
-        self.value = value.value if isinstance(value, Constant) else value
-        super().__init__()
-
-    def _sample(self, size=None):
-        if size is None:
-            return self.value
-        return np.array([self.value] * size)
-
-    def get_parents(self):
-        yield from []  # A Constant does not have any parents
-
-    def __repr__(self):
-        return f"{type(self).__name__}({self.value})"
+Constant = pt.constant
 
 
 class AbstractDistribution(Node, OverloadMixin, abc.ABC):
