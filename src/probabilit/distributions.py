@@ -32,7 +32,8 @@ Distribution("uniform", loc=-1, scale=2)
 import numpy as np
 import warnings
 import scipy as sp
-from probabilit.modeling import Distribution, Log, Exp, Sign
+from probabilit.modeling import Distribution
+from probabilit.math import Log, Exp, Sign
 
 
 def Uniform(min=0, max=1):
@@ -60,7 +61,7 @@ def TruncatedNormal(loc, scale, low=-np.inf, high=np.inf):
     return Distribution("truncnorm", a=a, b=b, loc=loc, scale=scale)
 
 
-class Lognormal(Distribution):
+class Lognormal:
     def __init__(self, mean, std):
         """
         A Lognormal distribution with mean and std corresponding directly
@@ -87,7 +88,7 @@ class Lognormal(Distribution):
         mu = Log(mean) - sigma_squared / 2
 
         # Call the parent class
-        super().__init__(distr="lognorm", s=sigma, scale=Exp(mu))
+        Distribution("lognorm", s=sigma, scale=Exp(mu))
 
     @classmethod
     def from_log_params(cls, mu, sigma):

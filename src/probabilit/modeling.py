@@ -289,7 +289,8 @@ from probabilit.correlation import (
 from probabilit.utils import build_corrmat, zip_args
 from probabilit.garbage_collector import GarbageCollector
 import copy
-
+from probabilit.sampling import SIZE
+from probabilit.math import *
 
 # =============================================================================
 # FUNCTIONS
@@ -942,6 +943,22 @@ class Distribution(AbstractDistribution):
         return list(self.get_parents()) == []
 
 
+def Distribution(name, *args, **kwargs):
+    match name.lower():
+        case "uniform":
+            return pt.random.uniform(*args, size=SIZE, **kwargs)
+        case "normal":
+            return pt.random.normal(*args, size=SIZE, **kwargs)
+        case "lognormal":
+            return pt.random.lognormal(*args, size=SIZE, **kwargs)
+        case "exponential":
+            return pt.random.exponential(*args, size=SIZE, **kwargs)
+        case "gamma":
+            return pt.random.gamma(*args, size=SIZE, **kwargs)
+        case _:
+            raise ValueError(f"Unknown distribution {name}")
+
+
 class EmpiricalDistribution(AbstractDistribution):
     """A distribution is a sampling node with or without ancestors.
 
@@ -1077,216 +1094,6 @@ class VariadicTransform(Transform):
 
     def get_parents(self):
         yield from self.parents
-
-
-class Add(VariadicTransform):
-    op = operator.add
-
-
-class Multiply(VariadicTransform):
-    op = operator.mul
-
-
-class Max(VariadicTransform):
-    op = np.maximum
-
-
-class Min(VariadicTransform):
-    op = np.minimum
-
-
-class All(VariadicTransform):
-    op = np.logical_and
-
-
-class Any(VariadicTransform):
-    op = np.logical_or
-
-
-class Avg(VariadicTransform):
-    def _sample(self, size=None):
-        # Avg(a, Avg(b, c)) !=  Avg(Avg(a, b), c), so we override _sample()
-        samples = tuple(parent.samples_ for parent in self.parents)
-        return np.average(np.vstack(samples), axis=0)
-
-
-class NoOp(VariadicTransform):
-    """Sample all ancestor variables, but do nothing else."""
-
-    def _sample(self, size=None):
-        tuple(parent.samples_ for parent in self.parents)
-
-
-class BinaryTransform(Transform):
-    """Class for binary transforms, such as Divide, Power, Subtract, etc."""
-
-    def __init__(self, *args):
-        self.parents = tuple(python_to_prob(arg) for arg in args)
-        super().__init__()
-
-    def _sample(self, size=None):
-        samples = (parent.samples_ for parent in self.parents)
-        return self.op(*samples)
-
-    def get_parents(self):
-        yield from self.parents
-
-
-class FloorDivide(BinaryTransform):
-    op = np.floor_divide
-
-
-class Mod(BinaryTransform):
-    op = np.mod
-
-
-class Divide(BinaryTransform):
-    op = operator.truediv
-
-
-class Power(BinaryTransform):
-    op = operator.pow
-
-
-class Subtract(BinaryTransform):
-    op = operator.sub
-
-
-class Equal(BinaryTransform):
-    op = np.equal
-
-
-class NotEqual(BinaryTransform):
-    op = np.not_equal
-
-
-class LessThan(BinaryTransform):
-    op = operator.lt
-
-
-class LessThanOrEqual(BinaryTransform):
-    op = operator.le
-
-
-class GreaterThan(BinaryTransform):
-    op = operator.gt
-
-
-class GreaterThanOrEqual(BinaryTransform):
-    op = operator.ge
-
-
-class IsClose(BinaryTransform):
-    op = np.isclose
-
-
-class UnaryTransform(Transform):
-    """Class for unary tranforms, i.e. functions that take one argument, such
-    as Abs(), Exp(), Log()."""
-
-    def __init__(self, arg):
-        self.parent = python_to_prob(arg)
-        super().__init__()
-
-    def _sample(self, size=None):
-        return self.op(self.parent.samples_)
-
-    def get_parents(self):
-        yield self.parent
-
-
-class Negate(UnaryTransform):
-    op = operator.neg
-
-
-class Abs(UnaryTransform):
-    op = operator.abs
-
-
-class Log(UnaryTransform):
-    op = np.log
-
-
-class Exp(UnaryTransform):
-    op = np.exp
-
-
-class Floor(UnaryTransform):
-    op = np.floor
-
-
-class Ceil(UnaryTransform):
-    op = np.ceil
-
-
-class Sign(UnaryTransform):
-    op = np.sign
-
-
-class Sqrt(UnaryTransform):
-    op = np.sqrt
-
-
-class Square(UnaryTransform):
-    op = np.square
-
-
-class Log10(UnaryTransform):
-    op = np.log10
-
-
-# Trigonometric functions
-class Sin(UnaryTransform):
-    op = np.sin
-
-
-class Cos(UnaryTransform):
-    op = np.cos
-
-
-class Tan(UnaryTransform):
-    op = np.tan
-
-
-class Arcsin(UnaryTransform):
-    op = np.arcsin
-
-
-class Arccos(UnaryTransform):
-    op = np.arccos
-
-
-class Arctan(UnaryTransform):
-    op = np.arctan
-
-
-class Arctan2(BinaryTransform):
-    op = np.arctan2
-
-
-# Hyperbolic functions
-class Sinh(UnaryTransform):
-    op = np.sinh
-
-
-class Cosh(UnaryTransform):
-    op = np.cosh
-
-
-class Tanh(UnaryTransform):
-    op = np.tanh
-
-
-class Arcsinh(UnaryTransform):
-    op = np.arcsinh
-
-
-class Arccosh(UnaryTransform):
-    op = np.arccosh
-
-
-class Arctanh(UnaryTransform):
-    op = np.arctanh
 
 
 class ScalarFunctionTransform(Transform):

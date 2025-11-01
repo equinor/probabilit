@@ -1,9 +1,6 @@
-from probabilit.modeling import (
-    EmpiricalDistribution,
-    Constant,
-    Log,
-    Exp,
-    Distribution,
+from probabilit.sampling import sample
+from probabilit.modeling import EmpiricalDistribution, Constant, Distribution
+from probabilit.math import (
     Floor,
     Equal,
     All,
@@ -23,7 +20,8 @@ class TestModelingExamples:
         die2 = Floor(1 + Distribution("uniform") * 6)
         equal = Equal(die1, die2)
 
-        samples = equal.sample(999, random_state=42)
+        samples = sample(equal, 999, random_state=60)
+        assert len(samples) == 999
 
         np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.001)
 

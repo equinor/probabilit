@@ -23,6 +23,7 @@ from probabilit.distributions import (
     TruncatedNormal,
 )
 from probabilit.inspection import plot, treeprint
+from probabilit.sampling import sample
 
 
 __all__ = [
