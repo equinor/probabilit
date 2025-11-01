@@ -1,5 +1,4 @@
 from probabilit.modeling import (
-    Distribution,
     Constant,
     EmpiricalDistribution,
     CumulativeDistribution,
@@ -15,6 +14,7 @@ from probabilit.modeling import (
     MultivariateDistribution,
 )
 from probabilit.distributions import (
+    Distribution,
     PERT,
     Triangular,
     Normal,

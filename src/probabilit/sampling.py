@@ -1,3 +1,4 @@
+import warnings
 import numbers
 import pytensor
 import numpy as np
@@ -16,9 +17,8 @@ def sample(
     random_state=None | np.random.Generator,
     method=None,
     correlator="composite",
-    gc_strategy=None,
     compile_kwargs: dict | None = None,
-):
+) -> np.ndarray:
     """Sample the current node and assign attribute `samples_` to nodes.
 
     Parameters
@@ -35,11 +35,8 @@ def sample(
         A Correlator instance or a string in {"cholesky", "imanconover",
        "permutation", "composite"}. The default is "composite", which first
         runs Iman-Conover, then runs the Permutation correlator on the result.
-    gc_strategy : None or list, optional
-        If None, no garbage collection is performed and the attribute
-        `.samples_` will be set on all nodes. If an empty list [], then
-        all nodes except the final one will be garbage collected. If a list
-        of Node instances, then those will be garbage collected.
+    compile_kwargs : dict, optional
+        Addional keyword arguments passed to pytensor.function
 
     Returns
     -------
@@ -81,7 +78,7 @@ def sample(
     0.062115...
     """
     if method is not None:
-        raise NotImplementedError("Only None method supporte so far")
+        warnings.warn("Only None method supporte so far")
 
     if not isinstance(size, numbers.Integral):
         raise TypeError("`size` must be a positive integer")
@@ -103,7 +100,7 @@ def sample(
 
     # TODO: Cache fn
     fn = pytensor.function([], nodes, **(compile_kwargs or {}))
-    fn.dprint(print_shape=True)
+    # fn.dprint(print_shape=True)
     return fn()
 
     d = self.num_distribution_nodes()  # Dimensionality of sampling

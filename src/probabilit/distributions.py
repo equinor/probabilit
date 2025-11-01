@@ -32,8 +32,30 @@ Distribution("uniform", loc=-1, scale=2)
 import numpy as np
 import warnings
 import scipy as sp
-from probabilit.modeling import Distribution
 from probabilit.math import Log, Exp, Sign
+from probabilit.sampling import SIZE
+
+import pytensor.tensor as pt
+
+
+def Distribution(name, *args, **kwargs):
+    match name.lower():
+        case "uniform":
+            # Scipy uses loc, scale, but pytensor uses min/max
+            def _scipy_uniform(loc=0, scale=1, **kwargs):
+                return pt.random.uniform(loc, loc + scale, **kwargs)
+
+            return _scipy_uniform(*args, size=SIZE, **kwargs)
+        case "normal" | "norm":
+            return pt.random.normal(*args, size=SIZE, **kwargs)
+        case "lognormal":
+            return pt.random.lognormal(*args, size=SIZE, **kwargs)
+        case "exponential":
+            return pt.random.exponential(*args, size=SIZE, **kwargs)
+        case "gamma":
+            return pt.random.gamma(*args, size=SIZE, **kwargs)
+        case _:
+            raise ValueError(f"Unknown distribution {name}")
 
 
 def Uniform(min=0, max=1):

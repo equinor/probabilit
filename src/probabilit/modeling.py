@@ -290,6 +290,7 @@ from probabilit.utils import build_corrmat, zip_args
 import copy
 from probabilit.sampling import SIZE
 from probabilit.math import *
+from probabilit.distributions import Distribution
 
 # =============================================================================
 # FUNCTIONS
@@ -939,22 +940,6 @@ class Distribution(AbstractDistribution):
     @property
     def is_source_node(self):
         return list(self.get_parents()) == []
-
-
-def Distribution(name, *args, **kwargs):
-    match name.lower():
-        case "uniform":
-            return pt.random.uniform(*args, size=SIZE, **kwargs)
-        case "normal" | "norm":
-            return pt.random.normal(*args, size=SIZE, **kwargs)
-        case "lognormal":
-            return pt.random.lognormal(*args, size=SIZE, **kwargs)
-        case "exponential":
-            return pt.random.exponential(*args, size=SIZE, **kwargs)
-        case "gamma":
-            return pt.random.gamma(*args, size=SIZE, **kwargs)
-        case _:
-            raise ValueError(f"Unknown distribution {name}")
 
 
 class EmpiricalDistribution(AbstractDistribution):

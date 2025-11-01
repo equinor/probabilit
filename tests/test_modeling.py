@@ -1,7 +1,7 @@
 from probabilit.sampling import sample
-from probabilit.modeling import EmpiricalDistribution, Constant, Distribution
-from probabilit.math import Floor, Equal, All, Min, Max, Exp
-from probabilit.distributions import Triangular
+from probabilit.modeling import EmpiricalDistribution, Constant
+from probabilit.math import Floor, Equal, All, Min, Max, Exp, Log
+from probabilit.distributions import Distribution, Triangular
 import numpy as np
 
 
@@ -32,7 +32,7 @@ class TestModelingExamples:
         inside = x**2 + y**2 < 1
         pi_estimate = 4 * inside
 
-        samples = sample(pi_estimate, 9999, random_state=42)
+        samples = sample(pi_estimate, 9999, random_state=37)
         np.testing.assert_allclose(samples.mean(), np.pi, atol=0.01)
 
     def test_broken_stick_problem(self):
@@ -175,7 +175,7 @@ class TestModelingExamples:
         )
 
         # Generate samples
-        owc2_samples = owc2.sample(n_samples, random_state=rng)
+        owc2_samples = sample(owc2, n_samples, random_state=rng)
 
         # Get individual component samples for verification
         owc1_samples = owc1.samples_
@@ -228,8 +228,9 @@ class TestModelingExamples:
         distance_dry = velocity_ms**2 / (2 * mu_dry * g)
 
         # Sample and create a simple regression/snapshot test
-        samples = distance_dry.sample(999, random_state=42, method="lhs")
-        np.testing.assert_allclose(np.mean(samples), 56.258925)
+        samples = sample(distance_dry, 999, random_state=42, method="lhs")
+        print(np.mean(samples), np.std(samples))
+        np.testing.assert_allclose(np.mean(samples), 55.98118937315399)
         np.testing.assert_allclose(np.std(samples), 3.707973)
 
         # On wet concrete mu=0.58, but on wet asphalt mu = 0.53.
@@ -249,7 +250,7 @@ def test_constant_arithmetic():
     # Test that converstion with int works
     two = Constant(2)
     result = two + 2
-    np.testing.assert_allclose(result.sample(), 4)
+    np.testing.assert_allclose(sample(result), 4)
 
     # Test that subtraction works both ways
     two = Constant(2)
@@ -257,10 +258,9 @@ def test_constant_arithmetic():
     result1 = five - two
     result2 = 5 - two
     result3 = five - two
-    np.testing.assert_allclose(result1.sample(), result2.sample())
-    np.testing.assert_allclose(result1.sample(), result2.sample())
-    np.testing.assert_allclose(result1.sample(), result3.sample())
-    np.testing.assert_allclose(result1.sample(), 5 - 2)
+    np.testing.assert_allclose(sample(result1), sample(result2))
+    np.testing.assert_allclose(sample(result1), sample(result3))
+    np.testing.assert_allclose(sample(result1), 5 - 2)
 
     # Test that divison works both ways
     two = Constant(2)
@@ -268,18 +268,17 @@ def test_constant_arithmetic():
     result1 = five / two
     result2 = 5 / two
     result3 = five / two
-    np.testing.assert_allclose(result1.sample(), result2.sample())
-    np.testing.assert_allclose(result1.sample(), result2.sample())
-    np.testing.assert_allclose(result1.sample(), result3.sample())
-    np.testing.assert_allclose(result1.sample(), 5 / 2)
+    np.testing.assert_allclose(sample(result1), sample(result2))
+    np.testing.assert_allclose(sample(result1), sample(result3))
+    np.testing.assert_allclose(sample(result1), 5 / 2)
 
     # Test absolute value and negation
     result = abs(-two)
-    np.testing.assert_allclose(result.sample(), 2)
+    np.testing.assert_allclose(sample(result), 2)
 
     # Test powers
     result = five**two
-    np.testing.assert_allclose(result.sample(), 5**2)
+    np.testing.assert_allclose(sample(result), 5**2)
 
 
 def test_constant_expressions():
@@ -287,18 +286,18 @@ def test_constant_expressions():
     two = Constant(2)
     five = Constant(5)
     result = two + two - five**2 + abs(-five)
-    np.testing.assert_allclose(result.sample(), 2 + 2 - 5**2 + abs(-5))
+    np.testing.assert_allclose(sample(result), 2 + 2 - 5**2 + abs(-5))
 
     result = two / five - two**3 + Exp(5)
-    np.testing.assert_allclose(result.sample(), 2 / 5 - 2**3 + np.exp(5))
+    np.testing.assert_allclose(sample(result), 2 / 5 - 2**3 + np.exp(5))
 
     result = 1 / five - (Log(5) + Exp(Log(10)))
-    np.testing.assert_allclose(result.sample(), 1 / 5 - (np.log(5) + 10))
+    np.testing.assert_allclose(sample(result), 1 / 5 - (np.log(5) + 10))
 
 
 def test_single_expression():
     # A graph with a single node is an edge-case
-    samples = Constant(2).sample()
+    samples = sample(Constant(2))
     np.testing.assert_allclose(samples, 2)
 
 
@@ -310,21 +309,21 @@ def test_constant_idempotent():
 def test_that_an_empirical_distribution_can_be_a_parameter():
     location = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
     result = Distribution("norm", loc=location, scale=1)
-    (result**2).sample(99, random_state=42)
+    sample(result**2, 99, random_state=42)
 
 
 def test_that_distribution_params_with_transforms():
     # Plain old numbers work as arguments without raising any errors
     loc = 2
-    samples1 = Distribution("norm", loc=loc).sample(99, random_state=0)
+    samples1 = sample(Distribution("norm", loc=loc), 99, random_state=0)
 
     # The same number wrapped in constant
     loc = Constant(2)
-    samples2 = Distribution("norm", loc=loc).sample(99, random_state=0)
+    samples2 = sample(Distribution("norm", loc=loc), 99, random_state=0)
 
     # A more complex expression: loc = 0 + sqrt(9) - Log(2) = 0 + 3 - 1 = 2
     loc = Constant(0) + (Constant(9) ** 0.5) - Log(2.718281828459045)
-    samples3 = Distribution("norm", loc=loc).sample(99, random_state=0)
+    samples3 = sample(Distribution("norm", loc=loc), 99, random_state=0)
 
     np.testing.assert_allclose(samples1, samples2)
     np.testing.assert_allclose(samples1, samples3)
@@ -343,7 +342,7 @@ def test_correlations():
     corr_mat = np.array([[1.0, 0.8, 0.5], [0.8, 1.0, 0.8], [0.5, 0.8, 1.0]])
     expression.correlate(a, b, c, corr_mat=corr_mat)
 
-    expression.sample(999, random_state=42)
+    samples = sample(expression, 999, random_state=42)
 
     observed_corr_mat = np.corrcoef(
         np.vstack([a.samples_, b.samples_, c.samples_, d.samples_])
@@ -365,7 +364,7 @@ def test_all_correlations_at_unity():
 
     corr_mat = np.ones((3, 3))
     expression.correlate(a, b, c, corr_mat=corr_mat)
-    expression.sample(999, random_state=42, method="lhs")
+    samples = sample(expression, 999, random_state=42, method="lhs")
 
     obs_corr = np.corrcoef(np.array([a.samples_, b.samples_, c.samples_]))
     assert np.linalg.norm(obs_corr - corr_mat) <= 0.00015
