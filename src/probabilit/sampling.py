@@ -2,10 +2,16 @@ import warnings
 import numbers
 import pytensor
 import numpy as np
+from scipy.stats.qmc import Sobol, LatinHypercube, Halton
 
-from pytensor.graph.traversal import graph_inputs
+from pytensor.graph.fg import FunctionGraph
+from pytensor.tensor.random.op import RandomVariable
+from pytensor.graph.traversal import graph_inputs, ancestors
 from pytensor.compile import SharedVariable
 from pytensor.tensor.random.type import RandomGeneratorType
+from pytensor.tensor import TensorVariable
+
+from probabilit.icdf import icdf
 
 SIZE = pytensor.shared(np.array(1.0, dtype="int64"), name="size")
 
@@ -77,51 +83,154 @@ def sample(
     >>> float(np.min(b.samples_)) # ImanConover does preserve marginals
     0.062115...
     """
-    if method is not None:
-        warnings.warn("Only None method supporte so far")
-
     if not isinstance(size, numbers.Integral):
         raise TypeError("`size` must be a positive integer")
     if not size > 0:
         raise ValueError("`size` must be a positive integer")
 
-    # Set batch size of RV nodes
-    SIZE.set_value(size)
+    is_sequence = isinstance(nodes, list | tuple)
+    if not is_sequence:
+        nodes = [nodes]
+
+    # TODO: choose correlator only at runtime
+    if method is not None:
+        nodes = replace_rvs_by_qmc_samples(nodes, method=method)
 
     # Seed shared RNGs
     sym_rngs = [
         v
-        for v in graph_inputs(nodes if isinstance(nodes, tuple | list) else [nodes])
+        for v in graph_inputs(nodes)
         if isinstance(v, SharedVariable) and isinstance(v.type, RandomGeneratorType)
     ]
+
+    if method is not None:
+        # It's actually more strict, there should be one RV. Now there's 1 RNG for every RV, but it could change!
+        assert len(sym_rngs) <= 1, "There should be at most 1 RNG when using QMC"
+
     if len(sym_rngs) > 0:
         rngs = np.random.default_rng(random_state).spawn(len(sym_rngs))
         for sym_rng, rng in zip(sym_rngs, rngs, strict=True):
             sym_rng.set_value(rng, borrow=True)
 
+    # Set batch size of RV nodes
+    SIZE.set_value(size)
+
     # TODO: Cache fn
     fn = pytensor.function([], nodes, **(compile_kwargs or {}))
-    # fn.dprint(print_shape=True)
-    return fn()
+    fn.dprint(print_shape=True)
+    res = fn()
+    return res if is_sequence else res[0]
 
-    d = self.num_distribution_nodes()  # Dimensionality of sampling
+
+def toposort_replace(nodes, replacements):
+    fgraph = FunctionGraph(outputs=nodes, clone=False)
+    toposort_index = {apply: i for i, apply in enumerate(fgraph.toposort())}
+
+    def key_fn(x):
+        replacee, replacement = x
+        replacee_owner = replacee.owner
+        if replacee_owner is None:
+            return -1
+        return toposort_index[replacee_owner]
+
+    sorted_replacements = sorted(
+        tuple(replacements.items()),
+        key=key_fn,
+    )
+    fgraph.replace_all(sorted_replacements, import_missing=True)
+    return fgraph.outputs
+
+
+class QMCRV(RandomVariable):
+    name = "QMC"
+    signature = "()->(d)"
+    __props__ = (*RandomVariable.__props__, "method")
+
+    def __init__(self, *args, method, **kwargs):
+        self.method = method
+        match method:
+            case "LatinHypercube":
+                self.scipy_method = LatinHypercube
+            case "Sobol":
+                self.scipy_method = Sobol
+            case "Halton":
+                self.scipy_method = Halton
+            case _:
+                raise ValueError("Method not supported")
+        super().__init__(*args, **kwargs)
+
+    def _supp_shape_from_params(self, dist_params, param_shapes=None):
+        [d] = dist_params
+        return (d.squeeze(),)
+
+    @classmethod
+    def rng_fn(cls, rng, d, size=None):
+        d = np.squeeze(d)
+        if d.ndim > 0:
+            raise ValueError(f"d must be a scalar, got {d}")
+
+        default_size = size in (None, ())
+        if default_size:
+            qmc_size = 1
+        elif len(size) == 1:
+            qmc_size = size
+        else:
+            qmc_size = int(np.prod(size))
+
+        qmc_draws = self.scipy_method(d=d, rng=rng).random(n=qmc_size)
+        if default_size:
+            return qmc_draws.squeeze(0)
+        elif len(size) == 1:
+            return qmc_draws
+        else:
+            return qmc_draws.reshape((*size, d))
+
+
+qmc_sobol = QMCRV(method="Sobol")
+qmc_lhs = QMCRV(method="LatinHypercube")
+qmc_halton = QMCRV(method="Halton")
+
+
+def replace_rvs_by_qmc_samples(nodes: list[TensorVariable], method: str):
+    """
+    Replace random variables in a graph with quasi-Monte Carlo samples.
+
+    nodes = [(z := normal(x := normal, y := exponential)]
+    len_rvs = 3
+    qmc_samples = QMC(size=(Size, len(RVs)))
+    new_x = icdf_normal(qmc_samples[:, 0], 0, 1)
+    new_y = icdf_normal(qmc_samples[:, 1], 1)
+    new_z = icdf_normal(qmc_samples[:, 2], new_x, new_y)
+
+    """
+    rvs_in_graph = [
+        v
+        for v in ancestors(nodes if isinstance(nodes, list | tuple) else nodes)
+        if (v.owner is not None and isinstance(v.owner.op, RandomVariable))
+    ]
+    # d = pt.prod([rv.size // SIZE for rv in rvs_in_graph])
+    d = len(rvs_in_graph)
 
     # Draw a quantiles of random variables in [0, 1] using a method
-    methods = {
-        "lhs": sp.stats.qmc.LatinHypercube,
-        "halton": sp.stats.qmc.Halton,
-        "sobol": sp.stats.qmc.Sobol,
-    }
-    if method is None:  # Pseudo-random sampling
-        random_state = check_random_state(random_state)
-        quantiles = random_state.random((size, d))
-    else:  # Quasi-random sampling
-        sampler = methods[method.lower().strip()](d=d, rng=random_state)
-        quantiles = sampler.random(n=size)
+    match method.lower():
+        case "lhs":
+            rv_op = qmc_lhs
+        case "sobol":
+            rv_op = qmc_sobol
+        case "halton":
+            rv_op = qmc_halton
+        case _:
+            raise ValueError(f"Unrecognized method {method}")
 
-    return self.sample_from_quantiles(
-        quantiles,
-        correlator=correlator,
-        gc_strategy=gc_strategy,
-        random_state=random_state,
-    )
+    qmc_draws = rv_op(d, size=SIZE)
+
+    replacements = {
+        rv: icdf(
+            rv.owner.op,
+            qmc_draws[..., i],
+            *rv.owner.op.dist_params(rv.owner),
+        )
+        for i, rv in enumerate(rvs_in_graph)
+    }
+
+    return toposort_replace(nodes, replacements)

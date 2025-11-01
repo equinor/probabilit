@@ -5,9 +5,12 @@ from probabilit.math import Floor, Equal, All, Min, Max, Exp, Log, IF, Stack
 from probabilit.distributions import Distribution, Triangular
 import numpy as np
 
+import pytest
+
 
 class TestModelingExamples:
-    def test_die_problem(self):
+    @pytest.mark.parametrize("method", (None, "lhs", "sobol", "halton"))
+    def test_die_problem(self, method):
         """If we throw 2 die, what is the probability that each one ends up
         with the same number?"""
 
@@ -15,7 +18,7 @@ class TestModelingExamples:
         die2 = Floor(1 + Distribution("uniform") * 6)
         equal = Equal(die1, die2)
 
-        samples = sample(equal, 999, random_state=42)
+        samples = sample(equal, 999, random_state=42, method=method)
         assert len(samples) == 999
 
         np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.01)
