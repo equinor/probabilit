@@ -163,20 +163,18 @@ class QMCRV(RandomVariable):
         [d] = dist_params
         return (d.squeeze(),)
 
-    @classmethod
-    def rng_fn(cls, rng, d, size=None):
-        d = np.squeeze(d)
-        if d.ndim > 0:
-            raise ValueError(f"d must be a scalar, got {d}")
+    def rng_fn(self, rng, d, size=None):
+        d = int(np.squeeze(d))
 
         default_size = size in (None, ())
         if default_size:
             qmc_size = 1
         elif len(size) == 1:
-            qmc_size = size
+            qmc_size = int(size[0])
         else:
             qmc_size = int(np.prod(size))
 
+        print(d)
         qmc_draws = self.scipy_method(d=d, rng=rng).random(n=qmc_size)
         if default_size:
             return qmc_draws.squeeze(0)

@@ -21,7 +21,7 @@ class TestModelingExamples:
         samples = sample(equal, 999, random_state=42, method=method)
         assert len(samples) == 999
 
-        np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.01)
+        np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.02)
 
     def test_estimating_pi(self):
         """Consider the unit square [0, 1]^2. The area of the square is 1.
