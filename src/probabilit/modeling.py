@@ -287,7 +287,6 @@ from probabilit.correlation import (
     Permutation,
 )
 from probabilit.utils import build_corrmat, zip_args
-from probabilit.garbage_collector import GarbageCollector
 import copy
 from probabilit.sampling import SIZE
 from probabilit.math import *
@@ -475,7 +474,6 @@ class Node(abc.ABC):
         random_state=None,
         method=None,
         correlator="composite",
-        gc_strategy=None,
     ):
         """Sample the current node and assign attribute `samples_` to nodes.
 
@@ -947,7 +945,7 @@ def Distribution(name, *args, **kwargs):
     match name.lower():
         case "uniform":
             return pt.random.uniform(*args, size=SIZE, **kwargs)
-        case "normal":
+        case "normal" | "norm":
             return pt.random.normal(*args, size=SIZE, **kwargs)
         case "lognormal":
             return pt.random.lognormal(*args, size=SIZE, **kwargs)

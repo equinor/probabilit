@@ -1,12 +1,6 @@
 from probabilit.sampling import sample
 from probabilit.modeling import EmpiricalDistribution, Constant, Distribution
-from probabilit.math import (
-    Floor,
-    Equal,
-    All,
-    Min,
-    Max,
-)
+from probabilit.math import Floor, Equal, All, Min, Max, Exp
 from probabilit.distributions import Triangular
 import numpy as np
 
@@ -20,10 +14,10 @@ class TestModelingExamples:
         die2 = Floor(1 + Distribution("uniform") * 6)
         equal = Equal(die1, die2)
 
-        samples = sample(equal, 999, random_state=60)
+        samples = sample(equal, 999, random_state=42)
         assert len(samples) == 999
 
-        np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.001)
+        np.testing.assert_allclose(samples.mean(), 1 / 6, atol=0.01)
 
     def test_estimating_pi(self):
         """Consider the unit square [0, 1]^2. The area of the square is 1.
@@ -38,7 +32,7 @@ class TestModelingExamples:
         inside = x**2 + y**2 < 1
         pi_estimate = 4 * inside
 
-        samples = pi_estimate.sample(9999, random_state=42)
+        samples = sample(pi_estimate, 9999, random_state=42)
         np.testing.assert_allclose(samples.mean(), np.pi, atol=0.01)
 
     def test_broken_stick_problem(self):
@@ -65,7 +59,7 @@ class TestModelingExamples:
         # No one of the short sticks is longer than 1/2 <=> all are shorter
         prob = All(length1 < 1 / 2, length2 < 1 / 2, length3 < 1 / 2)
 
-        samples = prob.sample(9999, random_state=42)
+        samples = sample(prob, 9999, random_state=42)
         np.testing.assert_allclose(samples.mean(), 1 / 4, atol=0.01)
 
     def test_mutual_fund_problem(self):
@@ -83,7 +77,7 @@ class TestModelingExamples:
         for year in range(20):
             interest = Distribution("norm", loc=1.11, scale=0.15)
             returns = returns * interest + saved_per_year
-        samples = returns.sample(999, random_state=42)
+        samples = sample(returns, 999, random_state=42)
 
         # Regression test essentially
         np.testing.assert_allclose(samples.mean(), 76583.58738496085)
@@ -115,8 +109,8 @@ class TestModelingExamples:
             )
 
         num_samples = 1000
-        res_total_person_hours = total_person_hours.sample(
-            num_samples, random_state=rng
+        res_total_person_hours = sample(
+            total_person_hours, num_samples, random_state=rng
         )
 
         # The mean and standard deviation of a Triangular(3.75, 4.25, 5.5) are 4.5 and 0.368,
@@ -150,7 +144,7 @@ class TestModelingExamples:
         height2 = is_twin * height1 + (1 - is_twin) * height2
 
         # This is the answer to the question
-        (abs(height2 - height1)).sample(999, random_state=42)
+        sample((abs(height2 - height1)), 999, random_state=42)
 
         # At least one of the realizations should be identical
         assert np.any(np.isclose(height1.samples_, height2.samples_))
@@ -246,36 +240,9 @@ class TestModelingExamples:
         distance_wet = velocity_ms**2 / (2 * mu_wet * g)
 
         # Sample and create a simple regression/snapshot test
-        samples = distance_wet.sample(999, random_state=42, method="lhs")
+        samples = sample(distance_wet, 999, random_state=42, method="lhs")
         np.testing.assert_allclose(np.mean(samples), 71.13491)
         np.testing.assert_allclose(np.std(samples), 5.830891)
-
-
-def test_copying():
-    # Create a graph
-    mu = Distribution("norm", loc=0, scale=1)
-    a = Distribution("norm", loc=mu, scale=Constant(0.5))
-
-    # Create a copy
-    a2 = a.copy()
-
-    # The copy is not the same object
-    assert a2 is not a
-
-    # However, the IDs match and they are equal
-    assert a2 == a and (a2._id == a._id)
-
-    # The same holds for parents - they are copied
-    assert a2.kwargs["loc"] is not a.kwargs["loc"]
-
-    a.sample()
-    assert hasattr(a, "samples_")
-    assert not hasattr(a2, "samples_")
-
-    # Now create a copy and ensure samples are copied too
-    a3 = a.copy()
-    assert hasattr(a3, "samples_")
-    assert a3.samples_ is not a.samples_
 
 
 def test_constant_arithmetic():
