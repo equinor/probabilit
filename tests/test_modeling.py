@@ -1,6 +1,7 @@
+from probabilit.correlation import correlate
 from probabilit.sampling import sample
 from probabilit.modeling import EmpiricalDistribution, Constant
-from probabilit.math import Floor, Equal, All, Min, Max, Exp, Log, IF
+from probabilit.math import Floor, Equal, All, Min, Max, Exp, Log, IF, Stack
 from probabilit.distributions import Distribution, Triangular
 import numpy as np
 
@@ -340,17 +341,16 @@ def test_correlations():
     b = Distribution("norm", loc=0, scale=1)
     c = Distribution("norm", loc=0, scale=1)
     d = Distribution("norm", loc=0, scale=1)
-    expression = a + b + c + d
+    expression = Stack([a, b, c, d])
+    print(expression.type)
 
     # This is not a valid correlation matrix (not pos.def) - but probabilit will fix that
     corr_mat = np.array([[1.0, 0.8, 0.5], [0.8, 1.0, 0.8], [0.5, 0.8, 1.0]])
-    expression.correlate(a, b, c, corr_mat=corr_mat)
+    _correlated_expression, _ = correlate(expression, (a, b, c), corr_mat=corr_mat)
 
-    samples = sample(expression, 999, random_state=42)
-
-    observed_corr_mat = np.corrcoef(
-        np.vstack([a.samples_, b.samples_, c.samples_, d.samples_])
-    )
+    stacked_samples = sample(_correlated_expression, 999, random_state=42)
+    assert stacked_samples.shape == (999, 4)
+    observed_corr_mat = np.corrcoef(stacked_samples.T)
     desired_corr_mat = np.eye(4)
     desired_corr_mat[:3, :3] = corr_mat
 
@@ -364,13 +364,13 @@ def test_all_correlations_at_unity():
     a = Distribution("norm", loc=0, scale=1)
     b = Distribution("norm", loc=0, scale=1)
     c = Distribution("norm", loc=0, scale=1)
-    expression = a + b + c
+    expression = Stack([a, b, c])
 
     corr_mat = np.ones((3, 3))
-    expression.correlate(a, b, c, corr_mat=corr_mat)
-    samples = sample(expression, 999, random_state=42, method="lhs")
+    correlated_expression, _ = correlate(expression, (a, b, c), corr_mat=corr_mat)
+    samples = sample(correlated_expression, 999, random_state=42, method="lhs")
 
-    obs_corr = np.corrcoef(np.array([a.samples_, b.samples_, c.samples_]))
+    obs_corr = np.corrcoef(samples.T)
     assert np.linalg.norm(obs_corr - corr_mat) <= 0.00015
 
 

@@ -24,6 +24,7 @@ from probabilit.distributions import (
 )
 from probabilit.inspection import plot, treeprint
 from probabilit.sampling import sample
+from probabilit.correlation import correlate
 
 
 __all__ = [
@@ -42,6 +43,7 @@ __all__ = [
     "Any",
     "scalar_transform",
     "MultivariateDistribution",
+    "correlate",
     # Custom distributions
     "PERT",
     "Triangular",
@@ -52,4 +54,6 @@ __all__ = [
     # Inspection
     "plot",
     "treeprint",
+    # Functional stuff
+    "sample",
 ]

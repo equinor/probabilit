@@ -39,6 +39,10 @@ import contextlib
 import os
 import itertools
 
+from pytensor.graph.replace import graph_replace
+from pytensor.tensor.variable import TensorVariable
+import pytensor.tensor as pt
+
 # CVXPY prints error messages about incompatible ortools version during import.
 # Since we use the SCS solver and not GLOP/PDLP (which need ortools), these errors
 # are irrelevant and would only confuse users. We suppress them by redirecting
@@ -54,6 +58,36 @@ with (
 
 class CorrelatorError(Exception):
     pass
+
+
+def correlate(
+    expression: TensorVariable,
+    vars_to_correlate: list[TensorVariable],
+    corr_mat: np.ndarray,
+    method: str = "cholesky",
+) -> tuple[TensorVariable, tuple[TensorVariable]]:
+    assert all(v.ndim == 1 for v in vars_to_correlate)
+    stacked_vars = pt.concatenate([v[:, None] for v in vars_to_correlate], axis=-1)
+
+    if not is_valid_corr_matrix(corr_mat):
+        corr_mat = nearest_correlation_matrix(corr_mat)
+        if not is_valid_corr_matrix(corr_mat):
+            raise ValueError(
+                "Correlation matrix still not valid after nearest_correlation_matrix adjustment"
+            )
+
+    match method:
+        case "cholesky":
+            correlated_stack = Cholesky(stacked_vars, corr_mat)
+        case _:
+            raise NotImplementedError(f"Method '{method}' is not implemented.")
+
+    correlated_variables = [
+        correlated_stack[:, i] for i in range(len(vars_to_correlate))
+    ]
+    replace_dict = dict(zip(vars_to_correlate, correlated_variables))
+    corr_expression = graph_replace(expression, replace_dict)
+    return corr_expression, tuple(replace_dict.values())
 
 
 def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False):
@@ -164,53 +198,39 @@ def _is_positive_definite(X):
         return False
 
 
-class Correlator(abc.ABC):
-    def set_target(self, correlation_matrix, cholesky=True):
-        """Set target correlation matrix."""
-        if not isinstance(correlation_matrix, np.ndarray):
-            raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
-        if not correlation_matrix.ndim == 2:
-            raise ValueError("Correlation matrix must be square.")
-        if not correlation_matrix.shape[0] == correlation_matrix.shape[1]:
-            raise ValueError("Correlation matrix must be square.")
-        if not np.allclose(np.diag(correlation_matrix), 1.0):
-            raise ValueError("Correlation matrix must have 1.0 on diagonal.")
-        if not np.allclose(correlation_matrix.T, correlation_matrix):
-            raise ValueError("Correlation matrix must be symmetric.")
-        if not _is_positive_definite(correlation_matrix):
-            raise ValueError("Correlation matrix must be positive definite.")
-
-        self.C = correlation_matrix.copy()
-        if cholesky:
-            self.P = np.linalg.cholesky(self.C)
-        return self
-
-    def _validate_X(self, X, check_rows_cols=True):
-        """Validate array X of shape (observations, variables)."""
-        if not (hasattr(self, "C")):
-            raise CorrelatorError("User must call `set_target` first.")
-
-        if not isinstance(X, np.ndarray):
-            raise TypeError("Input argument `X` must be NumPy array.")
-        if not X.ndim == 2:
-            raise ValueError("Correlation matrix must be square.")
-
-        N, K = X.shape
-
-        if self.C.shape[0] != K:
-            msg = f"Shape of `X` ({X.shape}) does not match shape of "
-            msg += f"correlation matrix ({self.P.shape})"
-            raise ValueError(msg)
-
-        if check_rows_cols and N <= K:
-            msg = f"The matrix X must have rows > columns. Got shape: {X.shape}"
-            raise ValueError(msg)
-
-        return N, K
+def _is_symmetric(X):
+    return np.allclose(X, X.T)
 
 
-@dataclasses.dataclass(init=False, repr=True, eq=False)
-class Cholesky(Correlator):
+def is_valid_corr_matrix(correlation_matrix):
+    """Set target correlation matrix."""
+    if not correlation_matrix.ndim == 2:
+        raise ValueError("Correlation matrix must be square.")
+    if not correlation_matrix.shape[0] == correlation_matrix.shape[1]:
+        raise ValueError("Correlation matrix must be square.")
+    if not np.allclose(np.diag(correlation_matrix.data), 1.0):
+        raise ValueError("Correlation matrix must have 1.0 on diagonal.")
+
+    return _is_symmetric(correlation_matrix) and _is_positive_definite(
+        correlation_matrix
+    )
+
+
+def _validate_X(X, check_rows_cols=True):
+    """Validate array X of shape (observations, variables)."""
+    if not isinstance(X, TensorVariable):
+        raise TypeError("Input argument `X` must be TensorVariable.")
+    if not X.ndim == 2:
+        raise ValueError("Data must be square.")
+
+    N, K = X.type.shape
+
+    if check_rows_cols and N is not None and K is not None and N <= K:
+        msg = f"The matrix X must have rows > columns. Got shape: {X.shape}"
+        raise ValueError(msg)
+
+
+def Cholesky(X, corr_matrix):
     """Create a Cholesky transform.
 
     Parameters
@@ -246,51 +266,50 @@ class Cholesky(Correlator):
 
     """
 
-    def set_target(self, correlation_matrix):
-        super().set_target(correlation_matrix)
-        return self
+    """Transform an input matrix X.
 
-    def __call__(self, X):
-        """Transform an input matrix X.
+    Parameters
+    ----------
+    X : TensorVariable
+        Input matrix of shape (N, K). This is the data set that we want to
+        induce correlation structure on. X must have at least K + 1
+        independent rows, because corr(X) cannot be singular.
 
-        Parameters
-        ----------
-        X : ndarray
-            Input matrix of shape (N, K). This is the data set that we want to
-            induce correlation structure on. X must have at least K + 1
-            independent rows, because corr(X) cannot be singular.
+    Returns
+    -------
+    ndarray
+        Output matrix of shape (N, K). This data set will have a
+        correlation structure that is more similar to `correlation_matrix`.
 
-        Returns
-        -------
-        ndarray
-            Output matrix of shape (N, K). This data set will have a
-            correlation structure that is more similar to `correlation_matrix`.
+    """
+    N, K = X.shape
 
-        """
-        self._validate_X(X)
-        N, K = X.shape
+    # Remove existing mean and std from marginal distributions
+    mean = pt.mean(X, axis=0)
+    std = pt.std(X, axis=0)
+    X_n = (X - mean) / std
 
-        # Remove existing mean and std from marginal distributions
-        mean = np.mean(X, axis=0)
-        std = np.std(X, axis=0)
-        X_n = (X - mean) / std
+    # Removing existing correlation
+    cov = pt.cov(X_n, rowvar=False, ddof=0)
+    P = pt.linalg.cholesky(cov)  # P is lower triangular
+    corr_P = pt.linalg.cholesky(corr_matrix)
 
-        # Removing existing correlation
-        cov = np.cov(X_n, rowvar=False, ddof=0)
-        P = np.linalg.cholesky(cov)  # P is lower triangular
+    # Compute X_n = X_n @ inv(P).T @ corr_P.T
+    # Several numerical improvements are available to us here:
+    # (1) Evaluate left-to-right or right-to-left depending on sizes
+    # (2) Do not invert the matrix, instead solve triangular systems
+    # (3) Use LAPACK routine TRMM (scipy.linalg.blas.dtrmm)
+    # I choose to implement (1) and (2), but avoid the LACACK calls for now.
 
-        # Compute X_n = X_n @ inv(P).T @ self.P.T
-        # Several numerical improvements are available to us here:
-        # (1) Evaluate left-to-right or right-to-left depending on sizes
-        # (2) Do not invert the matrix, instead solve triangular systems
-        # (3) Use LAPACK routine TRMM (scipy.linalg.blas.dtrmm)
-        # I choose to implement (1) and (2), but avoid the LACACK calls for now.
+    # When it comes to evaluation order (point (1) above), it's better to
+    # evaluate left-to-right if N < K, and right-to-left if N > K.
+    # Since N > K (must have rows > columns), we evaluate right-to-left
+    transform = pt.linalg.solve_triangular(P.T, corr_P.T, lower=False)
+    return mean + X_n @ (transform * std)
 
-        # When it comes to evaluation order (point (1) above), it's better to
-        # evaluate left-to-right if N < K, and right-to-left if N > K.
-        # Since N > K (must have rows > columns), we evaluate right-to-left
-        transform = sp.linalg.solve_triangular(P.T, self.P.T, lower=False)
-        return mean + X_n @ (transform * std)
+
+class Correlator(abc.ABC):
+    pass
 
 
 @dataclasses.dataclass(init=False, repr=True, eq=False)
@@ -477,6 +496,10 @@ class SwapIndexGenerator:
             return self.__call__(size=size)
 
         return chosen[:size], chosen[size:]
+
+
+class Correlator:
+    pass
 
 
 @dataclasses.dataclass(init=False, repr=True, eq=False)

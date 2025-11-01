@@ -50,3 +50,5 @@ Arctanh = pt.arctanh
 Arcsinh = pt.arcsinh
 Arccosh = pt.arccosh
 Arctanh = pt.arctanh
+
+Stack = lambda *args: pt.stack(*args, axis=-1)

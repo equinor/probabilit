@@ -94,9 +94,10 @@ def sample(
         for v in graph_inputs(nodes if isinstance(nodes, tuple | list) else [nodes])
         if isinstance(v, SharedVariable) and isinstance(v.type, RandomGeneratorType)
     ]
-    rngs = np.random.default_rng(random_state).spawn(len(sym_rngs))
-    for sym_rng, rng in zip(sym_rngs, rngs, strict=True):
-        sym_rng.set_value(rng, borrow=True)
+    if len(sym_rngs) > 0:
+        rngs = np.random.default_rng(random_state).spawn(len(sym_rngs))
+        for sym_rng, rng in zip(sym_rngs, rngs, strict=True):
+            sym_rng.set_value(rng, borrow=True)
 
     # TODO: Cache fn
     fn = pytensor.function([], nodes, **(compile_kwargs or {}))
