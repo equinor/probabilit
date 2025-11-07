@@ -1,5 +1,8 @@
 import collections
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
+from typing import Any
+
+from typing_extensions import Self
 
 
 class GarbageCollector:
@@ -15,13 +18,13 @@ class GarbageCollector:
         empty list means all nodes except the sink will be garbage collected.
     """
 
-    def __init__(self, strategy=None):
+    def __init__(self, strategy: Iterable[Any] | None = None):
         if not (strategy is None or isinstance(strategy, Collection)):
             raise TypeError(f"`strategy` must be None or a collection, got: {strategy}")
 
         self.strategy = strategy
 
-    def set_sink(self, sink):
+    def set_sink(self, sink: Any) -> Self:
         """Set the sink node, whose samples will always be kept."""
         self.sink = sink
 
@@ -39,7 +42,7 @@ class GarbageCollector:
 
         return self
 
-    def decrement_and_delete(self, node):
+    def decrement_and_delete(self, node: Any) -> list[Any]:
         """Decrement the reference counter (number of unsampled children for
         each parent) and delete `.samples_` if the reference count is zero.
 

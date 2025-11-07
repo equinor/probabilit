@@ -30,14 +30,19 @@ Induce correlations
 0.279652...
 """
 
+import abc
+import contextlib
+import dataclasses
+import itertools
+import os
+from collections.abc import Iterable, Iterator
+from typing import Any
+
 import numpy as np
 import scipy as sp
-import abc
-import dataclasses
+from typing_extensions import Self
 
-import contextlib
-import os
-import itertools
+from probabilit.types import Array1D, Array2D, CorrelationType
 
 # CVXPY prints error messages about incompatible ortools version during import.
 # Since we use the SCS solver and not GLOP/PDLP (which need ortools), these errors
@@ -56,7 +61,13 @@ class CorrelatorError(Exception):
     pass
 
 
-def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False):
+def nearest_correlation_matrix(
+    matrix: Array2D,
+    *,
+    weights: Array2D | None = None,
+    eps: float = 1e-6,
+    verbose: bool = False,
+) -> Array2D:
     """Returns the correlation matrix nearest to `matrix`, weighted elementwise
     by `weights`.
 
@@ -156,7 +167,7 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     return X
 
 
-def _is_positive_definite(X):
+def _is_positive_definite(X: Array2D) -> bool:
     try:
         np.linalg.cholesky(X)
         return True
@@ -165,7 +176,7 @@ def _is_positive_definite(X):
 
 
 class Correlator(abc.ABC):
-    def set_target(self, correlation_matrix, cholesky=True):
+    def set_target(self, correlation_matrix: Array2D, cholesky: bool = True) -> Self:
         """Set target correlation matrix."""
         if not isinstance(correlation_matrix, np.ndarray):
             raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
@@ -185,7 +196,7 @@ class Correlator(abc.ABC):
             self.P = np.linalg.cholesky(self.C)
         return self
 
-    def _validate_X(self, X, check_rows_cols=True):
+    def _validate_X(self, X: Array2D, check_rows_cols: bool = True) -> tuple[int, int]:
         """Validate array X of shape (observations, variables)."""
         if not (hasattr(self, "C")):
             raise CorrelatorError("User must call `set_target` first.")
@@ -246,11 +257,11 @@ class Cholesky(Correlator):
 
     """
 
-    def set_target(self, correlation_matrix):
+    def set_target(self, correlation_matrix: Array2D) -> Self:
         super().set_target(correlation_matrix)
         return self
 
-    def __call__(self, X):
+    def __call__(self, X: Array2D) -> Array2D:
         """Transform an input matrix X.
 
         Parameters
@@ -370,11 +381,11 @@ class ImanConover(Correlator):
     np.float64(0.592541)
     """
 
-    def set_target(self, correlation_matrix):
+    def set_target(self, correlation_matrix: Array2D) -> Self:
         super().set_target(correlation_matrix)
         return self
 
-    def __call__(self, X):
+    def __call__(self, X: Array2D) -> Array2D:
         """Transform an input matrix X.
 
         The output will have the same marginal distributions, but with
@@ -455,13 +466,13 @@ class SwapIndexGenerator:
     (array([7, 0, 4, 2]), array([3, 5, 1, 8]))
     """
 
-    def __init__(self, rng, n: int):
+    def __init__(self, rng: np.random.Generator, n: int):
         assert n >= 2
         self.rng = rng
         self.indices = np.arange(n)
         self.permutation = self.rng.permutation(self.indices)
 
-    def __call__(self, size: int):
+    def __call__(self, size: int) -> tuple[Array1D, Array1D]:
         assert size >= 1
 
         # Get 2 * size elements
@@ -484,12 +495,12 @@ class Permutation(Correlator):
     def __init__(
         self,
         *,
-        weights=None,
-        iterations=1000,
-        tol=0.01,
-        correlation_type="pearson",
-        random_state=None,
-        verbose=False,
+        weights: Array2D | None = None,
+        iterations: int = 1000,
+        tol: float = 0.01,
+        correlation_type: CorrelationType = "pearson",
+        random_state: np.random.Generator | int | None = None,
+        verbose: bool = False,
     ):
         """Create a Permutation instance, which induces correlations
         between variables in X by randomly shuffling rows within each column.
@@ -586,7 +597,12 @@ class Permutation(Correlator):
         self.verbose = verbose
         self.correlation_type = correlation_type
 
-    def set_target(self, correlation_matrix, *, weights=None):
+    def set_target(
+        self,
+        correlation_matrix: Array2D,
+        *,
+        weights: Array2D | None = None,
+    ) -> Self:
         """Set the target correlation matrix.
 
         Parameters
@@ -603,14 +619,14 @@ class Permutation(Correlator):
         self.triu_indices = np.triu_indices(self.C.shape[0], k=1)
         return self
 
-    def _error(self, observed, target):
+    def _error(self, observed: Array2D, target: Array2D) -> float:
         """Compute RMSE over upper triangular part of corr(X) - target."""
         idx = self.triu_indices  # Get upper triangular indices (ignore diag)
         weighted_residuals_sq = self.weights[idx] * (observed[idx] - target[idx]) ** 2.0
         return float(np.sqrt(np.sum(weighted_residuals_sq)))
 
     @staticmethod
-    def subiters(n, i):
+    def subiters(n: int, i: int) -> int:
         """Number of sub-iterations (swaps) per iteration."""
         # Use longer swap lengths in early iterations. The last half
         # of the iterations will use 1 sub-iteration. The second half of the
@@ -624,7 +640,7 @@ class Permutation(Correlator):
         C = np.log2(n) + 1
         return int(np.ceil(C ** (1 - (2 * i / n))))
 
-    def __call__(self, X):
+    def __call__(self, X: Array2D) -> Array2D:
         """Cycle through through columns (variables), and for each
         column it swaps random rows (observations). If the result
         leads to a smaller error (correlation closer to target), then it is
@@ -654,7 +670,9 @@ class Permutation(Correlator):
                 f"Running permutation correlator for {self.iters if self.iters else 'inf'} iterations."
             )
 
-        def product(iterations_gen, variables_gen):
+        def product(
+            iterations_gen: Iterable[int], variables_gen: Iterable[int]
+        ) -> Iterator[tuple[int, int]]:
             # itertools.product only works for finite inputs, so we need this
             for i in iterations_gen:
                 for j in variables_gen:
@@ -711,7 +729,7 @@ class Permutation(Correlator):
         return corr_mat.X  # The permuted data stored in CorrelationMatrix
 
 
-def decorrelate(X, remove_variance=True):
+def decorrelate(X: Array2D, remove_variance: bool = True) -> Array2D:
     """Removes correlations or covariance from data X.
 
     Examples
@@ -825,7 +843,12 @@ class CorrelationMatrix:
            [ 0.325, -0.6  , -0.151,  1.   ]])
     """
 
-    def __init__(self, X, correlation_type="pearson", check=True):
+    def __init__(
+        self,
+        X: Array2D,
+        correlation_type: CorrelationType = "pearson",
+        check: bool = True,
+    ):
         valid_corrs = ("pearson", "spearman")
         assert correlation_type in valid_corrs
         assert X.ndim == 2
@@ -860,13 +883,18 @@ class CorrelationMatrix:
             :, None
         ]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.corr_mat)
 
-    def __getitem__(self, *args, **kwargs):
+    def __getitem__(self, *args: Any, **kwargs: Any) -> float:
         return self.corr_mat.__getitem__(*args, **kwargs)
 
-    def commit(self, col, i, j):
+    def commit(
+        self,
+        col: int,
+        i: int | list[int],
+        j: int | list[int],
+    ) -> Self:
         """Commit a swap, storing new data and new correlation matrix."""
 
         # Compute everything we need to update internal state
@@ -887,7 +915,12 @@ class CorrelationMatrix:
             self.X[i, col], self.X[j, col] = self.X[j, col], self.X[i, col]
         return self
 
-    def _delta_numerator(self, col, i, j):
+    def _delta_numerator(
+        self,
+        col: int,
+        i: int | list[int],
+        j: int | list[int],
+    ) -> Array1D:
         """Compute the delta in the numerator when swapping."""
         if self.check:
             assert isinstance(col, int)
@@ -914,14 +947,24 @@ class CorrelationMatrix:
         delta_numerator[col] = 0.0
         return delta_numerator
 
-    def delta_column(self, col, i, j):
+    def delta_column(
+        self,
+        col: int,
+        i: int | list[int],
+        j: int | list[int],
+    ) -> Array1D:
         """Returns the change in the column `col` in the correlation matrix
         when rows i and j are swapped. To save a change, use `.commit()`."""
 
         diff = self._delta_numerator(col, i, j)
         return diff / (self.m * self.denominator * self.denominator[col])
 
-    def update_column(self, col, i, j):
+    def update_column(
+        self,
+        col: int,
+        i: int | list[int],
+        j: int | list[int],
+    ) -> Array1D:
         """Returns the new value of column `col` in the correlation matrix
         when rows i and j are swapped. To save a change, use `.commit()`."""
 
@@ -933,16 +976,21 @@ class CorrelationMatrix:
 class Composite(Correlator):
     """A composition where we first run ImanConover, then Permutation."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         self.iman_conover_correlator = ImanConover()
         self.permutation_correlator = Permutation(*args, **kwargs)
 
-    def set_target(self, correlation_matrix, *, weights=None):
+    def set_target(
+        self,
+        correlation_matrix: Array2D,
+        *,
+        weights: Array2D | None = None,
+    ) -> Self:
         self.iman_conover_correlator.set_target(correlation_matrix)
         self.permutation_correlator.set_target(correlation_matrix, weights=weights)
         return self
 
-    def __call__(self, X):
+    def __call__(self, X: Array2D) -> Array2D:
         # First run ImanConover to get a good starting point
         X_ic = self.iman_conover_correlator(X)
         # Then run Permutation
@@ -950,8 +998,8 @@ class Composite(Correlator):
 
 
 if __name__ == "__main__":
-    import pytest
     import matplotlib.pyplot as plt
+    import pytest
 
     pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
 

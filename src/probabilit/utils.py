@@ -1,9 +1,19 @@
 import itertools
+from collections.abc import Iterable, Iterator, Mapping
+from typing import Any
+
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 
+from probabilit.types import Array2D
 
-def adjust_minmax_quantiles(quantiles, cumulatives, expected):
+
+def adjust_minmax_quantiles(
+    quantiles: Iterable[float],
+    cumulatives: Iterable[float],
+    expected: float,
+) -> Array2D:
     """Adjust minimum and maximum in `quantiles` so we hit expected value.
 
     Examples
@@ -26,13 +36,20 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
     assert np.isclose(np.min(quantiles), 0)
     assert np.isclose(np.max(quantiles), 1)
 
-    def empirical_mean(quantiles, cumulatives):
+    def empirical_mean(
+        quantiles: npt.NDArray[Any],
+        cumulatives: npt.NDArray[Any],
+    ) -> float:
         """Compute the expected value of a histogram."""
         return sp.stats.rv_histogram(
             (np.diff(quantiles), cumulatives), density=False
         ).mean()
 
-    def transform(low_scale, high_scale, cumulatives):
+    def transform(
+        low_scale: float,
+        high_scale: float,
+        cumulatives: npt.NDArray[Any],
+    ) -> tuple[float, float]:
         """Return new low and high values in the cumulatives."""
         cumulatives = cumulatives.copy()
         q1, q2 = cumulatives[:2]
@@ -41,7 +58,12 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
         low = min(q2 - np.exp(low_scale) * (q2 - q1), q2 - 1e-6)
         return (low, high)
 
-    def objective(params, quantiles, cumulatives, expected):
+    def objective(
+        params: tuple[float, float],
+        quantiles: npt.NDArray[Any],
+        cumulatives: npt.NDArray[Any],
+        expected: float,
+    ) -> float:
         """Objective function to minimize."""
         low_scale, high_scale = params
 
@@ -70,7 +92,10 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
     return cumulatives
 
 
-def zip_args(args, kwargs):
+def zip_args(
+    args: Iterable[Any],
+    kwargs: Mapping[str, Any],
+) -> Iterator[tuple[Any, dict[str, Any]]]:
     """Zip argument and keyword arguments for repeated function calls.
 
     Examples
@@ -90,7 +115,7 @@ def zip_args(args, kwargs):
         yield args_i, dict(zip(kwargs.keys(), kwargs_i))
 
 
-def build_corrmat(correlations):
+def build_corrmat(correlations: Iterable[tuple[tuple[int, ...], Array2D]]) -> Array2D:
     """Given a list of [(indices1, corrmat1), (indices2, corrmat2), ...],
     create a big correlation matrix.
 

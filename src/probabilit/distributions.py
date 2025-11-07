@@ -29,23 +29,30 @@ Distribution("uniform", loc=-1, scale=2)
 
 """
 
-import numpy as np
 import warnings
+
+import numpy as np
 import scipy as sp
-from probabilit.modeling import Distribution, Log, Exp, Sign
+
+from probabilit.modeling import Distribution, Exp, Log, Sign
 
 
-def Uniform(min=0, max=1):
+def Uniform(min: float = 0, max: float = 1) -> Distribution:
     """Uniform distribution on [min, max)."""
     return Distribution("uniform", loc=min, scale=max - min)
 
 
-def Normal(loc, scale):
+def Normal(loc: float, scale: float) -> Distribution:
     """Normal distribution parametrized by mean (loc) and std (scale)."""
     return Distribution("norm", loc=loc, scale=scale)
 
 
-def TruncatedNormal(loc, scale, low=-np.inf, high=np.inf):
+def TruncatedNormal(
+    loc: float,
+    scale: float,
+    low: float = -np.inf,
+    high: float = np.inf,
+) -> Distribution:
     """A truncated Normal distribution parametrized by mean (loc) and
     std (scale) defined on [low, high).
 
@@ -61,7 +68,7 @@ def TruncatedNormal(loc, scale, low=-np.inf, high=np.inf):
 
 
 class Lognormal(Distribution):
-    def __init__(self, mean, std):
+    def __init__(self, mean: float, std: float):
         """
         A Lognormal distribution with mean and std corresponding directly
         to the expected value and standard deviation of the resulting lognormal.
@@ -90,7 +97,7 @@ class Lognormal(Distribution):
         super().__init__(distr="lognorm", s=sigma, scale=Exp(mu))
 
     @classmethod
-    def from_log_params(cls, mu, sigma):
+    def from_log_params(cls, mu: Distribution, sigma: float) -> Distribution:
         """
         Create a lognormal distribution from log-space parameters.
         Parameters correspond to the mean and standard deviation of the
@@ -106,7 +113,12 @@ class Lognormal(Distribution):
         return Distribution("lognorm", s=sigma, scale=Exp(mu))
 
 
-def PERT(minimum, mode, maximum, gamma=4.0):
+def PERT(
+    minimum: float,
+    mode: float,
+    maximum: float,
+    gamma: float = 4.0,
+) -> Distribution:
     """Returns a Beta distribution, parameterized by the PERT parameters.
 
     A high gamma value means a more concentrated distribution.
@@ -125,7 +137,13 @@ def PERT(minimum, mode, maximum, gamma=4.0):
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
-def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
+def Triangular(
+    low: float,
+    mode: float,
+    high: float,
+    low_perc: float = 0.1,
+    high_perc: float = 0.9,
+) -> Distribution:
     """Find optimal scipy parametrization given (low, mode, high) and
     return Distribution("triang", loc=..., scale=..., c=...).
 
@@ -163,7 +181,13 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     return Distribution("triang", loc=loc, scale=scale, c=c)
 
 
-def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90):
+def _fit_triangular_distribution(
+    low: float,
+    mode: float,
+    high: float,
+    low_perc: float = 0.10,
+    high_perc: float = 0.90,
+) -> tuple[float, float, float]:
     """Returns a tuple (loc, scale, c) to be used with scipy.
 
     Examples
@@ -176,7 +200,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     (3.00..., 6.99..., 0.71...)
     """
 
-    def triangular_cdf(x, a, b, mode):
+    def triangular_cdf(x: float, a: float, b: float, mode: float) -> float:
         """Calculate CDF of triangular distribution at point x"""
         if x <= a:
             return x * 0
@@ -187,7 +211,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
         else:
             return 1 - ((b - x) ** 2) / ((b - a) * (b - mode))
 
-    def equations(params):
+    def equations(params: tuple[float, float]) -> tuple[float, float]:
         """System of equations to solve for a and b"""
         a, b = params
 
@@ -204,7 +228,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
 
     # Solve the system of equations
     a, b = sp.optimize.fsolve(equations, (a0, b0))
-    rmse = np.sqrt(np.sum(np.array(equations([a, b])) ** 2))
+    rmse = np.sqrt(np.sum(np.array(equations((a, b))) ** 2))
     if rmse > 1e-6:
         warnings.warn(f"Optimization of Triangular params has {rmse=}")
 
@@ -213,7 +237,12 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     return float(a), float(b - a), float(c)
 
 
-def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
+def _pert_to_beta(
+    minimum: float,
+    mode: float,
+    maximum: float,
+    gamma: float = 4.0,
+) -> tuple[float, float, float, float]:
     """Convert the PERT parametrization to a beta distribution.
 
     Returns (a, b, loc, scale).
