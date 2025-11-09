@@ -42,6 +42,7 @@ def sample(
     method=None,
     correlator=None,
     compile_kwargs: dict | None = None,
+    dprint_sample_fn: bool = False,
 ) -> np.ndarray | list[np.ndarray]:
     """Sample nodes."""
     if correlator is not None:
@@ -102,7 +103,8 @@ def sample(
         for apply in qmc_nodes_fn.maker.fgraph.apply_nodes
         if isinstance(apply.op, RandomVariable)
     )
-    # qmc_nodes_fn.dprint(print_type=True, print_memory_map=True)
+    if dprint_sample_fn:
+        qmc_nodes_fn.dprint(print_type=True, print_memory_map=True)
 
     if method is None:
         qmc_samples_np = uniform.rvs(size=(size, d), random_state=random_state)
