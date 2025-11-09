@@ -102,7 +102,7 @@ def sample(
         for apply in qmc_nodes_fn.maker.fgraph.apply_nodes
         if isinstance(apply.op, RandomVariable)
     )
-    qmc_nodes_fn.dprint(print_type=True, print_memory_map=True)
+    # qmc_nodes_fn.dprint(print_type=True, print_memory_map=True)
 
     if method is None:
         qmc_samples_np = uniform.rvs(size=(size, d), random_state=random_state)
