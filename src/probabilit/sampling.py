@@ -11,6 +11,7 @@ from scipy.stats import uniform
 from scipy.stats.qmc import Halton, LatinHypercube, Sobol
 
 from probabilit.quantiles import quantile
+from probabilit.utils import extract_shape_of_nodes
 
 
 def toposort_replace(
@@ -60,19 +61,20 @@ def sample(
     rvs_in_graph = [
         apply.out for apply in fg.toposort() if isinstance(apply.op, RandomVariable)
     ]
-    d_fn = pytensor.function([], [rv.shape for rv in rvs_in_graph], mode="FAST_COMPILE")
-    rvs_shapes = d_fn()
-    rv_sizes = [int(np.prod(rv_shape)) for rv_shape in rvs_shapes]
-    d = sum(rv_sizes)
+    rv_shapes = extract_shape_of_nodes(rvs_in_graph)
+    rv_sizes = [pt.prod(rv_shape) for rv_shape in rv_shapes]
+
+    d_fn = pytensor.function([], pt.sum(rv_sizes), mode="FAST_COMPILE")
+    d = int(d_fn())
 
     # Replace random variables by icdf of QMC samples
-    qmc_samples = pt.tensor("qmc_samples", dtype="float64", shape=(None, int(d)))
+    qmc_samples = pt.tensor("qmc_samples", dtype="float64", shape=(None, d))
     # Use a dummy core_qmc_samples that will later be replaced
     # by the vectorized QMC samples with extra size dimension
-    core_qmc_samples = pt.tensor("core_qmc_samples", dtype="float64", shape=(int(d),))
+    core_qmc_samples = pt.tensor("core_qmc_samples", dtype="float64", shape=(d,))
     replacements = {}
     counter = 0
-    for rv, rv_shape, rv_size in zip(rvs_in_graph, rvs_shapes, rv_sizes, strict=True):
+    for rv, rv_shape, rv_size in zip(rvs_in_graph, rv_shapes, rv_sizes, strict=True):
         rv_quantiles = core_qmc_samples[counter : counter + rv_size].reshape(rv_shape)
         replacements[rv] = quantile(
             rv.owner.op,
@@ -87,13 +89,19 @@ def sample(
 
     # Compile function to get QMC nodes from QMC samples
     # TODO: Cache fn for same nodes / methods
-    qmc_nodes_fn = pytensor.function([qmc_samples], qmc_nodes, **(compile_kwargs or {}))
+    qmc_nodes_fn = pytensor.function(
+        [qmc_samples],
+        qmc_nodes,
+        **(compile_kwargs or {}),
+        # For constant functions qmc_samples won't be used
+        on_unused_input="ignore",
+    )
     assert not any(
         apply.out
         for apply in qmc_nodes_fn.maker.fgraph.apply_nodes
         if isinstance(apply.op, RandomVariable)
     )
-    # qmc_nodes_fn.dprint(print_type=True, print_memory_map=True)
+    qmc_nodes_fn.dprint(print_type=True, print_memory_map=True)
 
     if method is None:
         qmc_samples_np = uniform.rvs(size=(size, d), random_state=random_state)

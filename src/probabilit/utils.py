@@ -1,6 +1,13 @@
 import itertools
+
 import numpy as np
+import pytensor
 import scipy as sp
+from pytensor.graph.fg import FunctionGraph
+from pytensor.graph.traversal import ancestors
+from pytensor.tensor.basic import infer_shape_db
+from pytensor.tensor.rewriting.basic import topo_unconditional_constant_folding
+from pytensor.tensor.rewriting.shape import ShapeFeature
 
 
 def adjust_minmax_quantiles(quantiles, cumulatives, expected):
@@ -113,6 +120,19 @@ def build_corrmat(correlations):
         C[np.ix_(idx_i, idx_i)] = corrmat_i
 
     return C
+
+
+def extract_shape_of_nodes(nodes):
+    """Extract the shape graph of nodes so the shapes can be used without having to compute the nodes themselves."""
+    shape_fg = FunctionGraph(
+        outputs=[node.shape for node in nodes], features=[ShapeFeature()], clone=True
+    )
+    with pytensor.config.change_flags(optdb__max_use_ratio=10, cxx=""):
+        infer_shape_db.default_query.rewrite(shape_fg)
+        topo_unconditional_constant_folding.rewrite(shape_fg)
+    shape_graphs = shape_fg.outputs
+    assert not (set(nodes) & set(ancestors(shape_graphs)))
+    return shape_graphs
 
 
 if __name__ == "__main__":

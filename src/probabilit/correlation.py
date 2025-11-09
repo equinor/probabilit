@@ -30,18 +30,21 @@ Induce correlations
 0.279652...
 """
 
-import numpy as np
-import scipy as sp
 import abc
-import dataclasses
-
 import contextlib
-import os
+import dataclasses
 import itertools
+import os
 
-from pytensor.graph.replace import graph_replace
-from pytensor.tensor.variable import TensorVariable
+import numpy as np
 import pytensor.tensor as pt
+import scipy as sp
+from pytensor.graph.basic import Apply
+from pytensor.graph.op import Op
+from pytensor.graph.replace import _vectorize_node, graph_replace
+from pytensor.tensor.variable import TensorVariable
+
+from probabilit.utils import extract_shape_of_nodes
 
 # CVXPY prints error messages about incompatible ortools version during import.
 # Since we use the SCS solver and not GLOP/PDLP (which need ortools), these errors
@@ -60,14 +63,56 @@ class CorrelatorError(Exception):
     pass
 
 
+class CorrelatorOp(Op):
+    """A placeholder Op for correlating a stack of variables.
+
+    The Op can only be materialized during vectorization, because it needs a batch of samples
+    """
+
+    __props__ = ("method",)
+    gufunc_signature = "(x),(k,k)->(x)"
+
+    def __init__(self, method: str):
+        self.method = method
+
+    def make_node(self, X, corr_matrix):
+        X = pt.as_tensor_variable(X)
+        corr_matrix = pt.as_tensor_variable(corr_matrix)
+        assert X.type.ndim == 1
+        assert corr_matrix.type.ndim == 2
+        return Apply(self, [X, corr_matrix], [X.type()])
+
+    def do_constant_folding(self, fgraph, node):
+        return False
+
+    def infer_shape(self, fgraph, node, input_shapes):
+        return [input_shapes[0]]
+
+    def perform(self, node, inputs, outputs):
+        raise ValueError(
+            "CorrelatorOp is a placeholder and should not be executed directly."
+        )
+
+
+@_vectorize_node.register(CorrelatorOp)
+def materialize_correlator_op(op, node, stacked_vars, corr_matrix, **kwargs):
+    assert stacked_vars.ndim >= 2, (
+        "correlator stacked_vars must be at least 2D during vectorization"
+    )
+
+    if op.method == "cholesky":
+        correlated_stack = Cholesky(stacked_vars, corr_matrix)
+
+    return correlated_stack.owner
+
+
 def correlate(
     expression: TensorVariable,
     vars_to_correlate: list[TensorVariable],
     corr_mat: np.ndarray,
     method: str = "cholesky",
 ) -> tuple[TensorVariable, tuple[TensorVariable]]:
-    assert all(v.ndim == 1 for v in vars_to_correlate)
-    stacked_vars = pt.concatenate([v[:, None] for v in vars_to_correlate], axis=-1)
+    stacked_vars = pt.concatenate([v.ravel() for v in vars_to_correlate], axis=0)
 
     if not is_valid_corr_matrix(corr_mat):
         corr_mat = nearest_correlation_matrix(corr_mat)
@@ -76,18 +121,20 @@ def correlate(
                 "Correlation matrix still not valid after nearest_correlation_matrix adjustment"
             )
 
-    match method:
-        case "cholesky":
-            correlated_stack = Cholesky(stacked_vars, corr_mat)
-        case _:
-            raise NotImplementedError(f"Method '{method}' is not implemented.")
+    # This is a placeholder Op that will be replaced during vectorization
+    correlated_stack = CorrelatorOp(method)(stacked_vars, corr_mat)
 
-    correlated_variables = [
-        correlated_stack[:, i] for i in range(len(vars_to_correlate))
-    ]
-    replace_dict = dict(zip(vars_to_correlate, correlated_variables))
-    corr_expression = graph_replace(expression, replace_dict)
-    return corr_expression, tuple(replace_dict.values())
+    variable_shapes = extract_shape_of_nodes(vars_to_correlate)
+    counter = 0
+    replacements = {}
+    for var, var_shape in zip(vars_to_correlate, variable_shapes, strict=True):
+        var_size = pt.prod(var_shape)
+        corr_var = correlated_stack[counter : counter + var_size].reshape(var_shape)
+        replacements[var] = corr_var
+        counter += var_size
+
+    corr_expression = graph_replace(expression, replacements)
+    return corr_expression, tuple(replacements.values())
 
 
 def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False):
@@ -282,14 +329,15 @@ def Cholesky(X, corr_matrix):
         correlation structure that is more similar to `correlation_matrix`.
 
     """
-    N, K = X.shape
+    *_, N, K = X.shape
 
     # Remove existing mean and std from marginal distributions
-    mean = pt.mean(X, axis=0)
-    std = pt.std(X, axis=0)
+    mean = pt.mean(X, axis=-2, keepdims=True)
+    std = pt.std(X, axis=-2, keepdims=True)
     X_n = (X - mean) / std
 
     # Removing existing correlation
+    # TODO: Allow cov to work with batch dims
     cov = pt.cov(X_n, rowvar=False, ddof=0)
     P = pt.linalg.cholesky(cov)  # P is lower triangular
     corr_P = pt.linalg.cholesky(corr_matrix)
@@ -304,7 +352,7 @@ def Cholesky(X, corr_matrix):
     # When it comes to evaluation order (point (1) above), it's better to
     # evaluate left-to-right if N < K, and right-to-left if N > K.
     # Since N > K (must have rows > columns), we evaluate right-to-left
-    transform = pt.linalg.solve_triangular(P.T, corr_P.T, lower=False)
+    transform = pt.linalg.solve_triangular(P.mT, corr_P.mT, lower=False)
     return mean + X_n @ (transform * std)
 
 
@@ -973,8 +1021,8 @@ class Composite(Correlator):
 
 
 if __name__ == "__main__":
-    import pytest
     import matplotlib.pyplot as plt
+    import pytest
 
     pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
 
