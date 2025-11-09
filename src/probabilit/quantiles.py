@@ -21,15 +21,15 @@ def uniform_quantile(rv_op, draws, lower, upper):
 
 @quantile.register(BernoulliRV)
 def bernoulli_quantile(rv_op, draws, p):
-    return pt.switch(draws > p, 1, 0)
+    return pt.where(draws > p, 1, 0)
 
 
 @quantile.register(TriangularRV)
-def triangular_quantile(rv_op, draws, lower, upper, c):
+def triangular_quantile(rv_op, draws, lower, c, upper):
     tri_range = upper - lower
     breakpoint = (c - lower) / tri_range
-    return pt.switch(
-        draws > breakpoint,
-        lower + pt.sqrt(draws * range * (c - lower)),
-        upper - pt.sqrt((1 - draws) * range * (upper - c)),
+    return pt.where(
+        draws < breakpoint,
+        lower + pt.sqrt(draws * tri_range * (c - lower)),
+        upper - pt.sqrt((1 - draws) * tri_range * (upper - c)),
     )
