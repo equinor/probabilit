@@ -40,13 +40,14 @@ def sample(
     *,
     random_state=None,
     method=None,
-    correlator="composite",
+    correlator=None,
     compile_kwargs: dict | None = None,
 ) -> np.ndarray | list[np.ndarray]:
-    """Sample nodes.
-
-    # TODO: choose correlator only when this function is called
-    """
+    """Sample nodes."""
+    if correlator is not None:
+        raise ValueError(
+            "correlator is now implemented as a function during graph construction."
+        )
     if not isinstance(size, numbers.Integral):
         raise TypeError("`size` must be a positive integer")
     if not size > 0:
