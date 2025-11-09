@@ -29,12 +29,13 @@ Distribution("uniform", loc=-1, scale=2)
 
 """
 
-import numpy as np
 import warnings
-import scipy as sp
-from probabilit.math import Log, Exp, Sign
-from probabilit.sampling import SIZE
+
+import numpy as np
 import pytensor.tensor as pt
+import scipy as sp
+
+from probabilit.math import Exp, Log, Sign
 
 
 def Distribution(name, *args, **kwargs):
@@ -44,19 +45,19 @@ def Distribution(name, *args, **kwargs):
             def _scipy_uniform(loc=0, scale=1, **kwargs):
                 return pt.random.uniform(loc, loc + scale, **kwargs)
 
-            return _scipy_uniform(*args, size=SIZE, **kwargs)
+            return _scipy_uniform(*args, **kwargs)
         case "normal" | "norm":
-            return pt.random.normal(*args, size=SIZE, **kwargs)
+            return pt.random.normal(*args, **kwargs)
         case "lognormal":
-            return pt.random.lognormal(*args, size=SIZE, **kwargs)
+            return pt.random.lognormal(*args, **kwargs)
         case "exponential":
-            return pt.random.exponential(*args, size=SIZE, **kwargs)
+            return pt.random.exponential(*args, **kwargs)
         case "gamma":
-            return pt.random.gamma(*args, size=SIZE, **kwargs)
+            return pt.random.gamma(*args, **kwargs)
         case "bernoulli":
-            return pt.random.bernoulli(*args, size=SIZE, **kwargs)
+            return pt.random.bernoulli(*args, **kwargs)
         case "triangular":
-            return pt.random.triangular(*args, size=SIZE, **kwargs)
+            return pt.random.triangular(*args, **kwargs)
         case _:
             raise ValueError(f"Unknown distribution {name}")
 

@@ -5,11 +5,13 @@ Inspection
 Inspection of results, plotting, tables, exporting, etc.
 """
 
-import seaborn
-import pandas as pd
-from probabilit.modeling import NoOp, Distribution, Transform
-import numpy as np
 from numbers import Number
+
+import numpy as np
+import pandas as pd
+import seaborn
+
+from probabilit.modeling import Distribution, NoOp, Transform
 
 
 def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
@@ -80,7 +82,7 @@ def treeprint(node):
           └──Constant(2)
 
     """
-    retun node.dprint()
+    return node.dprint()
 
 
 if __name__ == "__main__":

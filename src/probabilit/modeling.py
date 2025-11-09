@@ -269,28 +269,28 @@ simulation model, or read and write files, etc.
 
 """
 
-import operator
+import abc
+import copy
 import functools
+import itertools
+import numbers
+
+import networkx as nx
 import numpy as np
 import scipy as sp
-import numbers
 from scipy import stats
-import abc
-import itertools
-import networkx as nx
 from scipy._lib._util import check_random_state
+
 from probabilit.correlation import (
-    nearest_correlation_matrix,
-    ImanConover,
     Cholesky,
     Composite,
+    ImanConover,
     Permutation,
+    nearest_correlation_matrix,
 )
-from probabilit.utils import build_corrmat, zip_args
-import copy
-from probabilit.sampling import SIZE
-from probabilit.math import *
 from probabilit.distributions import Distribution
+from probabilit.math import *
+from probabilit.utils import build_corrmat, zip_args
 
 # =============================================================================
 # FUNCTIONS

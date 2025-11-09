@@ -1,11 +1,11 @@
-from probabilit.correlation import correlate
-from probabilit.sampling import sample
-from probabilit.modeling import EmpiricalDistribution, Constant
-from probabilit.math import Floor, Equal, All, Min, Max, Exp, Log, IF, Stack
-from probabilit.distributions import Distribution, Triangular
 import numpy as np
-
 import pytest
+
+from probabilit.correlation import correlate
+from probabilit.distributions import Distribution, Triangular
+from probabilit.math import IF, All, Equal, Exp, Floor, Log, Max, Min, Stack
+from probabilit.modeling import Constant, EmpiricalDistribution
+from probabilit.sampling import sample
 
 
 class TestModelingExamples:
@@ -94,8 +94,9 @@ class TestModelingExamples:
 
         # Regression test essentially
         print(samples.mean(), samples.std())
-        np.testing.assert_allclose(samples.mean(), 77085.8183243356)
-        np.testing.assert_allclose(samples.std(), 33664.80313953588)
+        # 76647.9314993218 34039.73271790885
+        np.testing.assert_allclose(samples.mean(), 76091.5587733393)
+        np.testing.assert_allclose(samples.std(), 33437.13511898011)
 
     def test_total_person_hours(self):
         """Based on Example 19.2 from Risk Analysis: A Quantitative Guide, 3rd Edition by David Vose.
@@ -166,7 +167,7 @@ class TestModelingExamples:
         # At least one of the realizations should be identical
         assert np.any(np.isclose(height1_samples, height2_samples))
         np.testing.assert_allclose(
-            np.abs(height1_samples - height2_samples), abs_diff_samples
+            np.abs(height2_samples - height1_samples), abs_diff_samples
         )
 
     def test_fault_controlled_owc_correlation(self):
@@ -258,7 +259,7 @@ class TestModelingExamples:
 
         # Sample and create a simple regression/snapshot test
         samples = sample(distance_wet, 999, random_state=42, method="lhs")
-        print(samples.mean(), samples.std())
+        # print(samples.mean(), samples.std())
         np.testing.assert_allclose(np.mean(samples), 71.32497704280316)
         np.testing.assert_allclose(np.std(samples), 6.025907656905284)
 
