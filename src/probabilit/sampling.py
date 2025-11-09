@@ -7,6 +7,7 @@ from pytensor.graph.fg import FunctionGraph
 from pytensor.graph.replace import vectorize_graph
 from pytensor.tensor import TensorVariable
 from pytensor.tensor.random.op import RandomVariable
+from scipy.stats import uniform
 from scipy.stats.qmc import Halton, LatinHypercube, Sobol
 
 from probabilit.quantiles import quantile
@@ -57,7 +58,7 @@ def sample(
     # Get dimensionality of random nodes
     fg = FunctionGraph(outputs=nodes, clone=True, copy_inputs=False)
     rvs_in_graph = [
-        apply.out for apply in fg.apply_nodes if isinstance(apply.op, RandomVariable)
+        apply.out for apply in fg.toposort() if isinstance(apply.op, RandomVariable)
     ]
     d_fn = pytensor.function([], [rv.shape for rv in rvs_in_graph], mode="FAST_COMPILE")
     rvs_shapes = d_fn()
@@ -92,10 +93,10 @@ def sample(
         for apply in qmc_nodes_fn.maker.fgraph.apply_nodes
         if isinstance(apply.op, RandomVariable)
     )
-    # qmc_nodes_fn.dprint(print_shape=True)
+    # qmc_nodes_fn.dprint(print_type=True, print_memory_map=True)
 
     if method is None:
-        qmc_samples_np = np.random.default_rng(random_state).random(size=(size, d))
+        qmc_samples_np = uniform.rvs(size=(size, d), random_state=random_state)
     else:
         qmc_samples_np = {
             "sobol": Sobol,
