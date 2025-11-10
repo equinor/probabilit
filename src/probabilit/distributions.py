@@ -106,7 +106,33 @@ class Lognormal(Distribution):
         return Distribution("lognorm", s=sigma, scale=Exp(mu))
 
 
-def PERT(minimum, mode, maximum, gamma=4.0):
+def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
+    """Returns a Beta distribution, parameterized by the PERT parameters.
+
+    A high gamma value means a more concentrated distribution.
+
+    Examples
+    --------
+    >>> PERT(0, 6, 10, low_perc=0, high_perc=1)
+    Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
+    """
+    # Based on Wikipedia and another implementation:
+    # https://en.wikipedia.org/wiki/PERT_distribution
+    if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
+        raise ValueError("Percentiles must be between 0 and 1.")
+
+    if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
+        min, max = low, high
+    else:
+        # Estimate min and max from low and high
+        min, max = pert_fit_min_max_from_precentiles(
+            low, mode, high, low_perc, high_perc, gamma
+        )
+    a, b, loc, scale = _pert_to_beta(min, mode, max, gamma=gamma)
+    return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
+
+
+def PERT_deprecated(minimum, mode, maximum, gamma=4.0):
     """Returns a Beta distribution, parameterized by the PERT parameters.
 
     A high gamma value means a more concentrated distribution.
@@ -242,6 +268,28 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     b = 1 + gamma * (maximum - mode) / scale
 
     return (a, b, loc, scale)
+
+
+def pert_fit_min_max_from_precentiles(low, mode, high, low_prec, high_prec, gamma):
+    def equations(vars):
+        a, b = vars
+
+        # Translate parameters to the beta distribution
+        alpha, beta, loc, scale = _pert_to_beta(a, mode, b, gamma)
+
+        # The CDF of pert is given by the CDF of beta with the substitution
+        # z = (x-min)/(max-min)
+        beta_low = (low - loc) / scale
+        beta_high = (high - loc) / scale
+
+        eq1 = sp.stats.beta.cdf(beta_low, alpha, beta, loc, scale) - low_prec
+        eq2 = sp.stats.beta.cdf(beta_high, alpha, beta, loc, scale) - high_prec
+        return [eq1, eq2]
+
+    # Initial guesses: a < mode < b
+    guess = (low - abs(mode - low), high + abs(high - mode))
+    minimizer = sp.optimize.fsolve(equations, guess)
+    return minimizer[0], minimizer[1]
 
 
 if __name__ == "__main__":
