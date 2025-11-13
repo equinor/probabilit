@@ -1,11 +1,12 @@
 from probabilit.distributions import (
     _fit_triangular_distribution,
     _pert_to_beta,
+    _pert_fit_min_max_from_percentiles,
     Lognormal,
     Uniform,
 )
 import pytest
-from scipy.stats import triang
+from scipy.stats import triang, beta
 import numpy as np
 
 
@@ -97,22 +98,25 @@ class TestLognormal:
 
 
 class TestPERT:
-    @pytest.mark.parametrize("gamma", [1, 3, 4, 7])
-    @pytest.mark.parametrize("maximum", [10, 12, 14])
-    def test_pert_properties(self, gamma, maximum):
-        # Convert from PERT parameters to beta
+    @pytest.mark.parametrize("min", [0, 2, 4])
+    @pytest.mark.parametrize("max", [10, 12, 14])
+    @pytest.mark.parametrize("low_perc", [0.01, 0.1, 0.2])
+    @pytest.mark.parametrize("high_perc", [0.99, 0.9, 0.7])
+    def test_pert_properties(self, min, max, low_perc, high_perc):
+        mode = 5
+        gamma = 4
         a, b, loc, scale = _pert_to_beta(
-            minimum=1, mode=4, maximum=maximum, gamma=gamma
+            minimum=min, mode=mode, maximum=max, gamma=gamma
         )
 
-        # The mode of the beta distribution (from Wikipedia)
-        mode = (a - 1) / (a + b - 2)
-        # The mode should be located in the correct positoin on [0, 1]
-        np.testing.assert_allclose(mode, (4 - 1) / (maximum - 1))
+        low = beta(a, b, loc, scale).ppf(low_perc)
+        high = beta(a, b, loc, scale).ppf(high_perc)
 
-        # Desired mean of PERT matches actual mean of beta
-        mean = (1 + gamma * 4 + maximum) / (gamma + 2)
-        np.testing.assert_allclose(mean, (a / (a + b)) * scale + loc)
+        min_f, max_f = _pert_fit_min_max_from_percentiles(
+            low, mode, high, low_perc, high_perc, gamma
+        )
+
+        np.testing.assert_allclose([min_f, max_f], [min, max], atol=1e-2)
 
 
 class TestUniform:
