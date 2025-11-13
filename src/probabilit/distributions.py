@@ -113,6 +113,8 @@ def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
 
     Examples
     --------
+    >>> PERT(2,5,7)
+    Distribution("beta", a=np.float64(3.5), b=np.float64(2.5), loc=np.float64(-1.3), scale=np.float64(10.0))
     >>> PERT(0, 6, 10, low_perc=0, high_perc=1)
     Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
     """
@@ -125,10 +127,10 @@ def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
         min, max = low, high
     else:
         # Estimate min and max from low and high
-        min, max = pert_fit_min_max_from_precentiles(
+        min, max = _pert_fit_min_max_from_percentiles(
             low, mode, high, low_perc, high_perc, gamma
         )
-    a, b, loc, scale = _pert_to_beta(min, mode, max, gamma=gamma)
+    a, b, loc, scale = tuple(np.round(_pert_to_beta(min, mode, max, gamma=gamma), 1))
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
@@ -139,9 +141,9 @@ def PERT_deprecated(minimum, mode, maximum, gamma=4.0):
 
     Examples
     --------
-    >>> PERT(0, 6, 10)
+    >>> PERT_deprecated(0, 6, 10)
     Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
-    >>> PERT(0, 6, 10, gamma=10)
+    >>> PERT_deprecated(0, 6, 10, gamma=10)
     Distribution("beta", a=7.0, b=5.0, loc=0, scale=10)
     """
     # Based on Wikipedia and another implementation:
@@ -267,12 +269,28 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     a = 1 + gamma * (mode - minimum) / scale
     b = 1 + gamma * (maximum - mode) / scale
 
-    return (a, b, loc, scale)
+    return a, b, loc, scale
 
 
-def pert_fit_min_max_from_precentiles(low, mode, high, low_prec, high_prec, gamma):
+def _pert_fit_min_max_from_percentiles(low, mode, high, low_prec, high_prec, gamma):
+    """
+    Returns the maximum and the minimun of a PERT distribution with
+    percentiles corresponding to the inputs.
+
+    Examples
+    --------
+    >>> pert_fit_min_max_from_percentiles(2, 5, 7, 0.1, 0.9, 4)
+    (-1.2947082964619019, 8.747069754285215)
+    >>> pert_fit_min_max_from_percentiles(0, 5, 10, 0, 1, 4)
+    (0.0,10.0)
+    """
+
     def equations(vars):
         a, b = vars
+
+        # Big penalty for non-feasible solutions
+        if not (a < mode < b):
+            return [1e6, 1e6]
 
         # Translate parameters to the beta distribution
         alpha, beta, loc, scale = _pert_to_beta(a, mode, b, gamma)
@@ -282,14 +300,20 @@ def pert_fit_min_max_from_precentiles(low, mode, high, low_prec, high_prec, gamm
         beta_low = (low - loc) / scale
         beta_high = (high - loc) / scale
 
-        eq1 = sp.stats.beta.cdf(beta_low, alpha, beta, loc, scale) - low_prec
-        eq2 = sp.stats.beta.cdf(beta_high, alpha, beta, loc, scale) - high_prec
+        eq1 = sp.stats.beta.cdf(beta_low, alpha, beta) - low_prec
+        eq2 = sp.stats.beta.cdf(beta_high, alpha, beta) - high_prec
+
         return [eq1, eq2]
 
     # Initial guesses: a < mode < b
-    guess = (low - abs(mode - low), high + abs(high - mode))
-    minimizer = sp.optimize.fsolve(equations, guess)
-    return minimizer[0], minimizer[1]
+    guess = (low, high)
+
+    def objective(x):
+        eqs = equations(x)
+        return eqs[0] ** 2 + eqs[1] ** 2
+
+    minimizer = sp.optimize.minimize(objective, guess, method="Nelder-Mead")
+    return minimizer.x[0], minimizer.x[1]
 
 
 if __name__ == "__main__":
