@@ -130,7 +130,7 @@ def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
         min, max = _pert_fit_min_max_from_percentiles(
             low, mode, high, low_perc, high_perc, gamma
         )
-    a, b, loc, scale = tuple(np.round(_pert_to_beta(min, mode, max, gamma=gamma), 1))
+    a, b, loc, scale = _pert_to_beta(min, mode, max, gamma=gamma)
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
@@ -272,7 +272,9 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     return a, b, loc, scale
 
 
-def _pert_fit_min_max_from_percentiles(low, mode, high, low_prec, high_prec, gamma):
+def _pert_fit_min_max_from_percentiles(
+    low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4
+):
     """
     Returns the maximum and the minimun of a PERT distribution with
     percentiles corresponding to the inputs.
@@ -286,22 +288,21 @@ def _pert_fit_min_max_from_percentiles(low, mode, high, low_prec, high_prec, gam
     """
 
     def equations(vars):
-        a, b = vars
+        minimum, maximum = vars
 
-        # Big penalty for non-feasible solutions
-        if not (a < mode < b):
+        if not (minimum <= low and high <= maximum):
             return [1e6, 1e6]
 
         # Translate parameters to the beta distribution
-        alpha, beta, loc, scale = _pert_to_beta(a, mode, b, gamma)
+        alpha, beta, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma)
 
         # The CDF of pert is given by the CDF of beta with the substitution
         # z = (x-min)/(max-min)
         beta_low = (low - loc) / scale
         beta_high = (high - loc) / scale
 
-        eq1 = sp.stats.beta.cdf(beta_low, alpha, beta) - low_prec
-        eq2 = sp.stats.beta.cdf(beta_high, alpha, beta) - high_prec
+        eq1 = sp.stats.beta.cdf(beta_low, alpha, beta) - low_perc
+        eq2 = sp.stats.beta.cdf(beta_high, alpha, beta) - high_perc
 
         return [eq1, eq2]
 
@@ -313,7 +314,7 @@ def _pert_fit_min_max_from_percentiles(low, mode, high, low_prec, high_prec, gam
         return eqs[0] ** 2 + eqs[1] ** 2
 
     minimizer = sp.optimize.minimize(objective, guess, method="Nelder-Mead")
-    return minimizer.x[0], minimizer.x[1]
+    return tuple(minimizer.x)
 
 
 if __name__ == "__main__":
