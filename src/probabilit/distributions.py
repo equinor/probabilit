@@ -114,7 +114,7 @@ def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
     Examples
     --------
     >>> PERT(2,5,7)
-    Distribution("beta", a=np.float64(3.5), b=np.float64(2.5), loc=np.float64(-1.3), scale=np.float64(10.0))
+    Distribution("beta", a=np.float64(3.507407400303302), b=np.float64(2.4925925996966987), loc=np.float64(-1.29470963230509), scale=np.float64(10.041782012039477))
     >>> PERT(0, 6, 10, low_perc=0, high_perc=1)
     Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
     """
@@ -142,7 +142,7 @@ def PERT_deprecated(minimum, mode, maximum, gamma=4.0):
     Examples
     --------
     >>> PERT_deprecated(0, 6, 10)
-    Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
+    Distribution("beta", a=3.5, b=2.5, loc=-1.3, scale=10.0)
     >>> PERT_deprecated(0, 6, 10, gamma=10)
     Distribution("beta", a=7.0, b=5.0, loc=0, scale=10)
     """
@@ -281,10 +281,10 @@ def _pert_fit_min_max_from_percentiles(
 
     Examples
     --------
-    >>> pert_fit_min_max_from_percentiles(2, 5, 7, 0.1, 0.9, 4)
-    (-1.2947082964619019, 8.747069754285215)
-    >>> pert_fit_min_max_from_percentiles(0, 5, 10, 0, 1, 4)
-    (0.0,10.0)
+    >>> _pert_fit_min_max_from_percentiles(2, 5, 7, 0.1, 0.9, 4)
+    (np.float64(-1.29470963230509), np.float64(8.747072379734387))
+    >>> _pert_fit_min_max_from_percentiles(0, 5, 10, 0, 1, 4)
+    (np.float64(0.0), np.float64(10.0))
     """
 
     def equations(vars):
