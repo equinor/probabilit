@@ -134,25 +134,6 @@ def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
-def PERT_deprecated(minimum, mode, maximum, gamma=4.0):
-    """Returns a Beta distribution, parameterized by the PERT parameters.
-
-    A high gamma value means a more concentrated distribution.
-
-    Examples
-    --------
-    >>> PERT_deprecated(0, 6, 10)
-    Distribution("beta", a=3.5, b=2.5, loc=-1.3, scale=10.0)
-    >>> PERT_deprecated(0, 6, 10, gamma=10)
-    Distribution("beta", a=7.0, b=5.0, loc=0, scale=10)
-    """
-    # Based on Wikipedia and another implementation:
-    # https://en.wikipedia.org/wiki/PERT_distribution
-    # https://github.com/Calvinxc1/PertDist/blob/6577394265f57153441b5908147d94115b9edeed/pert/pert.py#L80
-    a, b, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma=gamma)
-    return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
-
-
 def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     """Find optimal scipy parametrization given (low, mode, high) and
     return Distribution("triang", loc=..., scale=..., c=...).
