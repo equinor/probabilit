@@ -114,7 +114,7 @@ def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
     Examples
     --------
     >>> PERT(2,5,7)
-    Distribution("beta", a=np.float64(3.507407400303302), b=np.float64(2.4925925996966987), loc=np.float64(-1.29470963230509), scale=np.float64(10.041782012039477))
+    Distribution("beta", a=3.50..., b=2.49..., loc=-1.29..., scale=10.04...)
     >>> PERT(0, 6, 10, low_perc=0, high_perc=1)
     Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
     """
@@ -144,9 +144,9 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     Examples
     --------
     >>> Triangular(low=1, mode=5, high=9)
-    Distribution("triang", loc=-2.2360679774997894, scale=14.472135954999578, c=0.5000000000000001)
+    Distribution("triang", loc=-2.23..., scale=14.47..., c=0.50...)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0.25, high_perc=0.75)
-    Distribution("triang", loc=-8.656854249492383, scale=27.313708498984766, c=0.5)
+    Distribution("triang", loc=-8.65..., scale=27.31..., c=0.5)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0, high_perc=1)
     Distribution("triang", loc=1, scale=8, c=0.5)
     """
@@ -257,15 +257,15 @@ def _pert_fit_min_max_from_percentiles(
     low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4
 ):
     """
-    Returns the maximum and the minimun of a PERT distribution with
+    Returns the maximum and the minimum of a PERT distribution with
     percentiles corresponding to the inputs.
 
     Examples
     --------
     >>> _pert_fit_min_max_from_percentiles(2, 5, 7, 0.1, 0.9, 4)
-    (np.float64(-1.29470963230509), np.float64(8.747072379734387))
+    (-1.29..., 8.74...)
     >>> _pert_fit_min_max_from_percentiles(0, 5, 10, 0, 1, 4)
-    (np.float64(0.0), np.float64(10.0))
+    (0.0, 10.0)
     """
 
     def equations(vars):
@@ -295,7 +295,7 @@ def _pert_fit_min_max_from_percentiles(
         return eqs[0] ** 2 + eqs[1] ** 2
 
     minimizer = sp.optimize.minimize(objective, guess, method="Nelder-Mead")
-    return tuple(minimizer.x)
+    return tuple(float(val) for val in minimizer.x)
 
 
 if __name__ == "__main__":
