@@ -113,7 +113,7 @@ class TestPERT:
         high = beta(a, b, loc, scale).ppf(high_perc)
 
         min_f, max_f = _pert_fit_min_max_from_percentiles(
-            low, mode, high, low_perc, high_perc, gamma
+            low, mode, high, low_perc=low_perc, high_perc=high_perc, gamma=gamma
         )
 
         np.testing.assert_allclose([min_f, max_f], [min, max], atol=1e-2)

@@ -106,9 +106,10 @@ class Lognormal(Distribution):
         return Distribution("lognorm", s=sigma, scale=Exp(mu))
 
 
-def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
+def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
     """Returns a Beta distribution, parameterized by the PERT parameters.
-
+    Finds an optimal parametrization given (low, mode, high) and
+    returns Distribution("beta", a=..., b=..., loc=..., scale=...).
     A high gamma value means a more concentrated distribution.
 
     Examples
@@ -123,12 +124,20 @@ def PERT(low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4.0):
     if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
+    if high_perc >= low_perc:
+        raise ValueError("Low percentile must be less than high percentile.")
+
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
         min, max = low, high
     else:
         # Estimate min and max from low and high
         min, max = _pert_fit_min_max_from_percentiles(
-            low, mode, high, low_perc, high_perc, gamma
+            low,
+            mode,
+            high,
+            low_perc=low_perc,
+            high_perc=high_perc,
+            gamma=gamma,
         )
     a, b, loc, scale = _pert_to_beta(min, mode, max, gamma=gamma)
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
@@ -254,7 +263,7 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
 
 
 def _pert_fit_min_max_from_percentiles(
-    low, mode, high, low_perc=0.1, high_perc=0.9, gamma=4
+    low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4
 ):
     """
     Returns the maximum and the minimum of a PERT distribution with
@@ -268,7 +277,7 @@ def _pert_fit_min_max_from_percentiles(
     (0.0, 10.0)
     """
 
-    def equations(vars):
+    def pert_cdf(vars):
         minimum, maximum = vars
 
         if not (minimum <= low and high <= maximum):
@@ -290,11 +299,11 @@ def _pert_fit_min_max_from_percentiles(
     # Initial guesses: a < mode < b
     guess = (low, high)
 
-    def objective(x):
-        eqs = equations(x)
+    def squared_sum(x):
+        eqs = pert_cdf(x)
         return eqs[0] ** 2 + eqs[1] ** 2
 
-    minimizer = sp.optimize.minimize(objective, guess, method="Nelder-Mead")
+    minimizer = sp.optimize.minimize(squared_sum, guess, method="Nelder-Mead")
     return tuple(float(val) for val in minimizer.x)
 
 
