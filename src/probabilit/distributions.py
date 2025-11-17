@@ -106,22 +106,40 @@ class Lognormal(Distribution):
         return Distribution("lognorm", s=sigma, scale=Exp(mu))
 
 
-def PERT(minimum, mode, maximum, gamma=4.0):
+def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
     """Returns a Beta distribution, parameterized by the PERT parameters.
-
+    Finds an optimal parametrization given (low, mode, high) and
+    returns Distribution("beta", a=..., b=..., loc=..., scale=...).
     A high gamma value means a more concentrated distribution.
 
     Examples
     --------
+    >>> PERT(2,5,7,low_perc=0.1, high_perc=0.9)
+    Distribution("beta", a=3.50..., b=2.49..., loc=-1.29..., scale=10.04...)
     >>> PERT(0, 6, 10)
     Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
-    >>> PERT(0, 6, 10, gamma=10)
-    Distribution("beta", a=7.0, b=5.0, loc=0, scale=10)
     """
     # Based on Wikipedia and another implementation:
     # https://en.wikipedia.org/wiki/PERT_distribution
-    # https://github.com/Calvinxc1/PertDist/blob/6577394265f57153441b5908147d94115b9edeed/pert/pert.py#L80
-    a, b, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma=gamma)
+    if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
+        raise ValueError("Percentiles must be between 0 and 1.")
+
+    if high_perc < low_perc:
+        raise ValueError("Low percentile must be less than high percentile.")
+
+    if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
+        min, max = low, high
+    else:
+        # Estimate min and max from low and high
+        min, max = _pert_fit_min_max_from_percentiles(
+            low,
+            mode,
+            high,
+            low_perc=low_perc,
+            high_perc=high_perc,
+            gamma=gamma,
+        )
+    a, b, loc, scale = _pert_to_beta(min, mode, max, gamma=gamma)
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
@@ -135,9 +153,9 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     Examples
     --------
     >>> Triangular(low=1, mode=5, high=9)
-    Distribution("triang", loc=-2.2360679774997894, scale=14.472135954999578, c=0.5000000000000001)
+    Distribution("triang", loc=-2.23..., scale=14.47..., c=0.50...)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0.25, high_perc=0.75)
-    Distribution("triang", loc=-8.656854249492383, scale=27.313708498984766, c=0.5)
+    Distribution("triang", loc=-8.65..., scale=27.31..., c=0.5)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0, high_perc=1)
     Distribution("triang", loc=1, scale=8, c=0.5)
     """
@@ -241,7 +259,52 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     a = 1 + gamma * (mode - minimum) / scale
     b = 1 + gamma * (maximum - mode) / scale
 
-    return (a, b, loc, scale)
+    return a, b, loc, scale
+
+
+def _pert_fit_min_max_from_percentiles(
+    low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4
+):
+    """
+    Returns the maximum and the minimum of a PERT distribution with
+    percentiles corresponding to the inputs.
+
+    Examples
+    --------
+    >>> _pert_fit_min_max_from_percentiles(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
+    (-1.29..., 8.74...)
+    >>> _pert_fit_min_max_from_percentiles(0, 5, 10)
+    (0.0, 10.0)
+    """
+
+    def pert_cdf(vars):
+        minimum, maximum = vars
+
+        if not (minimum <= low and high <= maximum):
+            return [1e6, 1e6]
+
+        # Translate parameters to the beta distribution
+        alpha, beta, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma)
+
+        # The CDF of pert is given by the CDF of beta with the substitution
+        # z = (x-min)/(max-min)
+        beta_low = (low - loc) / scale
+        beta_high = (high - loc) / scale
+
+        eq1 = sp.stats.beta.cdf(beta_low, alpha, beta) - low_perc
+        eq2 = sp.stats.beta.cdf(beta_high, alpha, beta) - high_perc
+
+        return [eq1, eq2]
+
+    # Initial guesses: a < mode < b
+    guess = (low, high)
+
+    def squared_sum(x):
+        eqs = pert_cdf(x)
+        return eqs[0] ** 2 + eqs[1] ** 2
+
+    minimizer = sp.optimize.minimize(squared_sum, guess, method="Nelder-Mead")
+    return tuple(float(val) for val in minimizer.x)
 
 
 if __name__ == "__main__":
