@@ -114,9 +114,9 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
 
     Examples
     --------
-    >>> PERT(2,5,7)
+    >>> PERT(2,5,7,low_perc=0.1, high_perc=0.9)
     Distribution("beta", a=3.50..., b=2.49..., loc=-1.29..., scale=10.04...)
-    >>> PERT(0, 6, 10, low_perc=0, high_perc=1)
+    >>> PERT(0, 6, 10)
     Distribution("beta", a=3.4, b=2.6, loc=0, scale=10)
     """
     # Based on Wikipedia and another implementation:
@@ -124,7 +124,7 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
     if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
-    if high_perc >= low_perc:
+    if high_perc < low_perc:
         raise ValueError("Low percentile must be less than high percentile.")
 
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
@@ -271,9 +271,9 @@ def _pert_fit_min_max_from_percentiles(
 
     Examples
     --------
-    >>> _pert_fit_min_max_from_percentiles(2, 5, 7, 0.1, 0.9, 4)
+    >>> _pert_fit_min_max_from_percentiles(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
     (-1.29..., 8.74...)
-    >>> _pert_fit_min_max_from_percentiles(0, 5, 10, 0, 1, 4)
+    >>> _pert_fit_min_max_from_percentiles(0, 5, 10)
     (0.0, 10.0)
     """
 
