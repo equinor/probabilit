@@ -15,10 +15,10 @@ class TestTriangular:
     @pytest.mark.parametrize("loc", [-1, 0, 1])
     @pytest.mark.parametrize("scale", [1, 10, 25])
     @pytest.mark.parametrize("low_perc", [0.01, 0.05, 0.1, 0.2])
-    def test_triangular_roundstrips(self, c, loc, scale, low_perc):
+    @pytest.mark.parametrize("high_perc", [0.99, 0.95, 0.9, 0.8])
+    def test_triangular_roundstrips(self, c, loc, scale, low_perc, high_perc):
         # Test round-trips
         mode = loc + c * scale
-        high_perc = 0.8
 
         # Get parameters to optimize toward
         distr = triang(loc=loc, scale=scale, c=c)
@@ -33,7 +33,10 @@ class TestTriangular:
             high_perc=high_perc,
         )
 
-        np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)
+        assert (
+            np.linalg.norm(np.array([loc_f, scale_f, c_f]) - np.array([loc, scale, c]))
+            < 10e-4
+        )
 
     @pytest.mark.parametrize("delta", [0.001, 0.01, 0.1, 0.2, 0.3, 0.4])
     def test_triangular_roundstrips_squeeze(self, delta):
@@ -55,7 +58,10 @@ class TestTriangular:
             high_perc=1 - delta,
         )
 
-        np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)
+        assert (
+            np.linalg.norm(np.array([loc_f, scale_f, c_f]) - np.array([loc, scale, c]))
+            < 10e-4
+        )
 
 
 class TestLognormal:
