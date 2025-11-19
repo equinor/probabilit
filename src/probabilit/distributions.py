@@ -193,6 +193,28 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     >>> _fit_triangular_distribution(3, 8, 10, low_perc=0, high_perc=1.0)
     (3.00..., 6.99..., 0.71...)
     """
+    # Special case: low == mode
+    if abs(low - mode) < 10e-8:
+        c = low_perc
+        # We obtain loc and scale directly by solving the
+        # following system of equations:
+        # I) low = loc + c*scale
+        # II) high_perc = 1 - (1-high_scaled)**2/(1-c),
+        # with high_scaled = (high-loc)/scale.
+        # The second equation corresponds to CDF(high) = high_perc,
+        # but we have scaled to the unit interval for better
+        # algebraic properties.
+        scale = (high - mode) / (1 - np.sqrt((1 - c) * (1 - high_perc)) - c)
+        loc = mode - c * scale
+        return loc, scale, c
+
+    # Special case: high == mode
+    if abs(high - mode) < 10e-8:
+        c = high_perc
+        # We derive loc and scale in a similar manner as above.
+        scale = (mode - low) / (c - np.sqrt(c * low_perc))
+        loc = mode - c * scale
+        return loc, scale, c
 
     def triangular_cdf(x, a, b, mode):
         """Calculate CDF of triangular distribution at point x"""
@@ -205,13 +227,13 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
         else:
             return 1 - ((b - x) ** 2) / ((b - a) * (b - mode))
 
-    def equations(params):
+    def percentile_equations(params):
         """System of equations to solve for a and b"""
-        a, b = params
+        minimum, maximum = params
 
         # Calculate CDFs at the given percentile values
-        cdf_low = triangular_cdf(low, a, b, mode)
-        cdf_high = triangular_cdf(high, a, b, mode)
+        cdf_low = triangular_cdf(low, minimum, maximum, mode)
+        cdf_high = triangular_cdf(high, minimum, maximum, mode)
 
         # Return the difference from target percentiles
         return (cdf_low - low_perc, cdf_high - high_perc)
@@ -221,10 +243,14 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     b0 = high + abs(high - mode)
 
     # Solve the system of equations
-    a, b = sp.optimize.fsolve(equations, (a0, b0))
-    rmse = np.sqrt(np.sum(np.array(equations([a, b])) ** 2))
+    a, b = sp.optimize.fsolve(percentile_equations, (a0, b0))
+    rmse = np.sqrt(np.sum(np.array(percentile_equations([a, b])) ** 2))
     if rmse > 1e-6:
-        warnings.warn(f"Optimization of Triangular params has {rmse=}")
+        warnings.warn(
+            f"Optimization of Triangular params has {rmse=}",
+            "This means that the returned distribution will not fit well",
+            "with your input parameters, please review your inputs for triangular.",
+        )
 
     # Calculate the relative position of the mode, return (loc, scale, c)
     c = (mode - a) / (b - a)
@@ -304,6 +330,13 @@ def _pert_fit_min_max_from_percentiles(
         return eqs[0] ** 2 + eqs[1] ** 2
 
     minimizer = sp.optimize.minimize(squared_sum, guess, method="Nelder-Mead")
+    rmse = squared_sum(minimizer.x)
+    if rmse > 1e-6:
+        warnings.warn(
+            f"Optimization of PERT params has {rmse=}",
+            "This means that the returned distribution will not fit well",
+            "with your input parameters, please review your inputs for PERT.",
+        )
     return tuple(float(val) for val in minimizer.x)
 
 
