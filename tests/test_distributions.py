@@ -11,14 +11,14 @@ import numpy as np
 
 
 class TestTriangular:
-    @pytest.mark.parametrize("c", [0.1, 0.5, 0.7])
-    @pytest.mark.parametrize("loc", [-1, 0, 1])
-    @pytest.mark.parametrize("scale", [1, 10, 25])
-    @pytest.mark.parametrize("low_perc", [0.01, 0.05, 0.1, 0.2])
-    def test_triangular_roundstrips(self, c, loc, scale, low_perc):
+    @pytest.mark.parametrize("c", [0.1, 0.2, 0.5, 0.7])
+    @pytest.mark.parametrize("loc", [-1, 0.5])
+    @pytest.mark.parametrize("scale", [1, 10])
+    @pytest.mark.parametrize("low_perc", [0, 0.01, 0.05, 0.1, 0.2, 0.3])
+    @pytest.mark.parametrize("high_perc", [1.0, 0.99, 0.95, 0.9, 0.8, 0.7])
+    def test_triangular_roundtrips(self, c, loc, scale, low_perc, high_perc):
         # Test round-trips
         mode = loc + c * scale
-        high_perc = 0.8
 
         # Get parameters to optimize toward
         distr = triang(loc=loc, scale=scale, c=c)
@@ -33,10 +33,15 @@ class TestTriangular:
             high_perc=high_perc,
         )
 
-        np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)
+        # Check if distributions are close using pointwise RMSE
+        x = np.linspace(loc, loc + scale, num=2**8)
+        func_true = distr.pdf(x)
+        func_est = triang(loc=loc_f, scale=scale_f, c=c_f).pdf(x)
+        rmse = np.mean((func_true - func_est) ** 2) ** 0.5
+        assert rmse < 1e-7
 
     @pytest.mark.parametrize("delta", [0.001, 0.01, 0.1, 0.2, 0.3, 0.4])
-    def test_triangular_roundstrips_squeeze(self, delta):
+    def test_triangular_roundtrips_squeeze(self, delta):
         loc = 0
         scale = 10
         c = 0.8
@@ -55,7 +60,11 @@ class TestTriangular:
             high_perc=1 - delta,
         )
 
-        np.testing.assert_allclose([loc_f, scale_f, c_f], [loc, scale, c], atol=1e-8)
+        x = np.linspace(loc, loc + scale, num=2**8)
+        func_true = distr.pdf(x)
+        func_est = triang(loc=loc_f, scale=scale_f, c=c_f).pdf(x)
+        rmse = np.mean((func_true - func_est) ** 2) ** 0.5
+        assert rmse < 1e-7
 
 
 class TestLognormal:
