@@ -198,8 +198,12 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     # This makes all following optimization scale and shift invariant (good property!)
     a = 2 / (high - low)
     b = 1 - (2 * high) / (high - low)
-    scaler = lambda x: a * x + b
-    inv_scaler = lambda y: (y - b) / a
+
+    def scaler(x):
+        return a * x + b
+
+    def inv_scaler(y):
+        return (y - b) / a
 
     low, mode, high = scaler(low), scaler(mode), scaler(high)
     assert np.isclose(low, -1)
@@ -250,6 +254,10 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
         bounds=[(epsilon, np.inf), (epsilon, np.inf)],
         method="L-BFGS-B",
     )
+
+    rmse = result.fun
+    if rmse > 1e-6:
+        warnings.warn(f"Optimization of Triangular params has {rmse=}")
 
     # Extract the minimum and maximum of the distribution
     under_mode, over_mode = result.x
