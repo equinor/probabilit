@@ -196,9 +196,11 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     This function answers the reverse question. Suppose we are given minimum=0,
     mode=5 and we know that P90=7.763932. What is the maximum value?
 
-    >>> _fit_triangular_distribution(low=0, mode=5, high=7.763932,
+    >>> loc, scale, c = _fit_triangular_distribution(low=0, mode=5, high=7.763932,
     ...                              low_perc=0, high_perc=0.90)
-    (1.4553143157652213e-08, 9.999999..., 0.500000...)
+    >>> maximum = loc + scale
+    >>> maximum
+    9.999999...
 
     In general the user may ask for minimum and maximum given any PXX and PYY.
 
