@@ -12,8 +12,8 @@ import numpy as np
 
 class TestTriangular:
     @pytest.mark.parametrize("c", [0.1, 0.2, 0.5, 0.7])
-    @pytest.mark.parametrize("loc", [-1, 0.5])
-    @pytest.mark.parametrize("scale", [1, 10])
+    @pytest.mark.parametrize("loc", [0, 10**6])
+    @pytest.mark.parametrize("scale", [1, 10**6])
     @pytest.mark.parametrize("low_perc", [0, 0.01, 0.05, 0.1, 0.2, 0.3])
     @pytest.mark.parametrize("high_perc", [1.0, 0.99, 0.95, 0.9, 0.8, 0.7])
     def test_triangular_roundtrips(self, c, loc, scale, low_perc, high_perc):

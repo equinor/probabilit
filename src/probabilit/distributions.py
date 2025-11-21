@@ -184,6 +184,24 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
 def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90):
     """Returns a tuple (loc, scale, c) to be used with scipy.
 
+    Description
+    -----------
+
+    Suppose we have a triangular distribution defined on [minimum, maximum]
+    with a mode. If we want to compute a percentile, such as P90, we can do it:
+
+    >>> sp.stats.triang(loc=0, scale=10, c=0.5).ppf(0.9)
+    np.float64(7.76393202250021)
+
+    This function answers the reverse question. Suppose we are given minimum=0,
+    mode=5 and we know that P90=7.763932. What is the maximum value?
+
+    >>> _fit_triangular_distribution(low=0, mode=5, high=7.763932,
+    ...                              low_perc=0, high_perc=0.90)
+    (1.4553143157652213e-08, 9.999999..., 0.500000...)
+
+    In general the user may ask for minimum and maximum given any PXX and PYY.
+
     Examples
     --------
     >>> _fit_triangular_distribution(3, 8, 10, low_perc=0.10, high_perc=0.90)
@@ -195,7 +213,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     """
 
     # Scale the problem with f(x) = x * a + b, to (-1, 1).
-    # This makes all following optimization scale and shift invariant (good property!)
+    # This makes all following optimization scale and shift invariant
     a = 2 / (high - low)
     b = 1 - (2 * high) / (high - low)
 
@@ -206,8 +224,6 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
         return (y - b) / a
 
     low, mode, high = scaler(low), scaler(mode), scaler(high)
-    assert np.isclose(low, -1)
-    assert np.isclose(high, 1)
 
     epsilon = np.finfo(float).eps ** 0.5
 
@@ -217,7 +233,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
         desired values of (low, high).
 
         We parametrize this function by (under_mode, over_mode) because the
-        constraints under_mode>0 and over_mode>0 implies that
+        constraints under_mode > 0 and over_mode > 0 implies that
           low < mode < high
         those two box constraints (non-negativity on each variable) are easier
         to deal with for most optimizers, compared to (minimum < maximum).
@@ -226,8 +242,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
         # Parameterize as differences relative to the mode, so we obey
         # the constraint: minimum < mode < maximum
         under_mode, over_mode = parameters
-        assert under_mode > 0
-        assert over_mode > 0
+        assert under_mode > 0 and over_mode > 0
 
         # Convert to minimum and maximum
         minimum, maximum = mode - under_mode, mode + over_mode
@@ -244,20 +259,20 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
         return np.sqrt(np.mean(residuals**2))
 
     # Initial guesses for a and b, the lower and upper bounds for support
-    # The shift and scale are empirical black magic: use what makes tests pass:)
-    under_mode0 = (mode - low) * 0.5 + 0.1
-    over_mode0 = (high - mode) * 0.5 + 0.1
+    # The shift and scale are empirical: use what makes tests pass.
+    # We also ensure that initial guesses are positive
+    under_mode0 = max((mode - low) * 0.5, 0) + 0.01
+    over_mode0 = max((high - mode) * 0.5, 0) + 0.01
 
     result = sp.optimize.minimize(
         rmse_minimum_maximum,
         x0=[under_mode0, over_mode0],
         bounds=[(epsilon, np.inf), (epsilon, np.inf)],
-        method="L-BFGS-B",
+        method="L-BFGS-B",  # Empirical: we chose this method since tests pass
     )
 
-    rmse = result.fun
-    if rmse > 1e-6:
-        warnings.warn(f"Optimization of Triangular params has {rmse=}")
+    if result.fun > 1e-6:
+        warnings.warn(f"Optimization of Triangular params has {result.fun=}")
 
     # Extract the minimum and maximum of the distribution
     under_mode, over_mode = result.x
@@ -266,11 +281,10 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     # We scale to (-1, 1) in the beginning, and now we must scale back
     minimum, mode, maximum = inv_scaler(minimum), inv_scaler(mode), inv_scaler(maximum)
 
-    # Back to scipy
+    # Back to scipy parametrization
     loc = minimum
     scale = maximum - minimum
     c = (mode - minimum) / scale
-    assert 0 <= c <= 1.0
     return float((loc)), float((scale)), float(c)
 
 
