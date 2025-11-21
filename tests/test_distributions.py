@@ -107,29 +107,41 @@ class TestLognormal:
 
 
 class TestPERT:
-    @pytest.mark.parametrize("min", [0, 2, 4])
-    @pytest.mark.parametrize("max", [10, 12, 14])
+    @pytest.mark.parametrize("min", [-(10**6), 0, 2, 4])
+    @pytest.mark.parametrize("max", [10, 12, 14, 10**6])
     @pytest.mark.parametrize("low_perc", [0.01, 0.1, 0.2])
     @pytest.mark.parametrize("high_perc", [0.99, 0.9, 0.7])
-    def test_pert_min_max(self, min, max, low_perc, high_perc):
+    def test_pert_roundtrips(self, min, max, low_perc, high_perc):
         mode = 5
         gamma = 4
         a, b, loc, scale = _pert_to_beta(
             minimum=min, mode=mode, maximum=max, gamma=gamma
         )
 
-        low = beta(a, b, loc, scale).ppf(low_perc)
-        high = beta(a, b, loc, scale).ppf(high_perc)
+        distr = beta(a, b, loc, scale)
+        low, high = distr.ppf([low_perc, high_perc])
 
         min_f, max_f = _pert_fit_min_max_from_percentiles(
             low, mode, high, low_perc=low_perc, high_perc=high_perc, gamma=gamma
         )
 
-        np.testing.assert_allclose([min_f, max_f], [min, max], atol=1e-2)
+        # Check if distributions are close using pointwise RMSE
+        x = np.linspace(loc, loc + scale, num=2**8)
+        func_true = distr.pdf(x)
+
+        # Calulate the estimated beta-function
+        a_f, b_f, loc_f, scale_f = _pert_to_beta(
+            minimum=min_f, mode=mode, maximum=max_f, gamma=gamma
+        )
+        func_est = beta(a_f, b_f, loc=loc_f, scale=scale_f).pdf(x)
+
+        # Do the comparison
+        rmse = np.mean((func_true - func_est) ** 2) ** 0.5
+        assert rmse < 1e-5
 
     @pytest.mark.parametrize("gamma", [1, 3, 4, 7])
     @pytest.mark.parametrize("maximum", [10, 12, 14])
-    def test_pert_mode_mean(self, gamma, maximum):
+    def test_pert_to_beta(self, gamma, maximum):
         # Convert from PERT parameters to beta
         a, b, loc, scale = _pert_to_beta(
             minimum=1, mode=4, maximum=maximum, gamma=gamma

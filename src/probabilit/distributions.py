@@ -333,8 +333,8 @@ def _pert_fit_min_max_from_percentiles(
     --------
     >>> _pert_fit_min_max_from_percentiles(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
     (-1.29..., 8.74...)
-    >>> _pert_fit_min_max_from_percentiles(0, 5, 10)
-    (0.0, 10.0)
+    >>> _pert_fit_min_max_from_percentiles(1, 5, 7)
+    (1.00..., 6.99...)
     """
     # Scale the problem with f(x) = x * a + b, to (-1, 1).
     # This makes all following optimization scale and shift invariant
@@ -404,7 +404,7 @@ def _pert_fit_min_max_from_percentiles(
 
     # We scale to (-1, 1) in the beginning, and now we must scale back
     minimum, maximum = inv_scaler(minimum), inv_scaler(maximum)
-    return minimum, maximum
+    return float(minimum), float(maximum)
 
 
 if __name__ == "__main__":
