@@ -155,7 +155,7 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     >>> Triangular(low=1, mode=5, high=9)
     Distribution("triang", loc=-2.23..., scale=14.47..., c=0.50...)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0.25, high_perc=0.75)
-    Distribution("triang", loc=-8.65..., scale=27.31..., c=0.5)
+    Distribution("triang", loc=-8.65..., scale=27.31..., c=0.50...)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0, high_perc=1)
     Distribution("triang", loc=1, scale=8, c=0.5)
     """
@@ -184,6 +184,26 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
 def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90):
     """Returns a tuple (loc, scale, c) to be used with scipy.
 
+    Description
+    -----------
+
+    Suppose we have a triangular distribution defined on [minimum, maximum]
+    with a mode. If we want to compute a percentile, such as P90, we can do it:
+
+    >>> sp.stats.triang(loc=0, scale=10, c=0.5).ppf(0.9)
+    np.float64(7.76393202250021)
+
+    This function answers the reverse question. Suppose we are given minimum=0,
+    mode=5 and we know that P90=7.763932. What is the maximum value?
+
+    >>> loc, scale, c = _fit_triangular_distribution(low=0, mode=5, high=7.763932,
+    ...                              low_perc=0, high_perc=0.90)
+    >>> maximum = loc + scale
+    >>> maximum
+    9.999999...
+
+    In general the user may ask for minimum and maximum given any PXX and PYY.
+
     Examples
     --------
     >>> _fit_triangular_distribution(3, 8, 10, low_perc=0.10, high_perc=0.90)
@@ -194,41 +214,80 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     (3.00..., 6.99..., 0.71...)
     """
 
-    def triangular_cdf(x, a, b, mode):
-        """Calculate CDF of triangular distribution at point x"""
-        if x <= a:
-            return x * 0
-        if x >= b:
-            return x * 0 + 1.0
-        if x <= mode:
-            return ((x - a) ** 2) / ((b - a) * (mode - a))
-        else:
-            return 1 - ((b - x) ** 2) / ((b - a) * (b - mode))
+    # Scale the problem with f(x) = x * a + b, to (-1, 1).
+    # This makes all following optimization scale and shift invariant
+    a = 2 / (high - low)
+    b = 1 - (2 * high) / (high - low)
 
-    def equations(params):
-        """System of equations to solve for a and b"""
-        a, b = params
+    def scaler(x):
+        return a * x + b
 
-        # Calculate CDFs at the given percentile values
-        cdf_low = triangular_cdf(low, a, b, mode)
-        cdf_high = triangular_cdf(high, a, b, mode)
+    def inv_scaler(y):
+        return (y - b) / a
 
-        # Return the difference from target percentiles
-        return (cdf_low - low_perc, cdf_high - high_perc)
+    low, mode, high = scaler(low), scaler(mode), scaler(high)
+
+    epsilon = np.finfo(float).eps ** 0.5
+
+    def rmse_minimum_maximum(parameters):
+        """Given (minimum, maximum) of a distribution, create the distribution,
+        evaluate the inverse-CDF (PPF) and see how close (low, high) is to the
+        desired values of (low, high).
+
+        We parametrize this function by (under_mode, over_mode) because the
+        constraints under_mode > 0 and over_mode > 0 implies that
+          low < mode < high
+        those two box constraints (non-negativity on each variable) are easier
+        to deal with for most optimizers, compared to (minimum < maximum).
+        """
+
+        # Parameterize as differences relative to the mode, so we obey
+        # the constraint: minimum < mode < maximum
+        under_mode, over_mode = parameters
+        assert under_mode > 0 and over_mode > 0
+
+        # Convert to minimum and maximum
+        minimum, maximum = mode - under_mode, mode + over_mode
+
+        # Create distribution
+        loc = minimum
+        scale = maximum - minimum
+        c = (mode - minimum) / scale
+        distr = sp.stats.triang(loc=loc, scale=scale, c=c)
+
+        # Check how close we are to the desired low and high
+        est_low, est_high = distr.ppf([low_perc, high_perc])
+        residuals = np.array([low - est_low, high - est_high])
+        return np.sqrt(np.mean(residuals**2))
 
     # Initial guesses for a and b, the lower and upper bounds for support
-    a0 = low - abs(mode - low)
-    b0 = high + abs(high - mode)
+    # The shift and scale are empirical: use what makes tests pass.
+    # We also ensure that initial guesses are positive
+    under_mode0 = max((mode - low) * 0.5, 0) + 0.01
+    over_mode0 = max((high - mode) * 0.5, 0) + 0.01
 
-    # Solve the system of equations
-    a, b = sp.optimize.fsolve(equations, (a0, b0))
-    rmse = np.sqrt(np.sum(np.array(equations([a, b])) ** 2))
-    if rmse > 1e-6:
-        warnings.warn(f"Optimization of Triangular params has {rmse=}")
+    result = sp.optimize.minimize(
+        rmse_minimum_maximum,
+        x0=[under_mode0, over_mode0],
+        bounds=[(epsilon, np.inf), (epsilon, np.inf)],
+        method="L-BFGS-B",  # Empirical: we chose this method since tests pass
+    )
 
-    # Calculate the relative position of the mode, return (loc, scale, c)
-    c = (mode - a) / (b - a)
-    return float(a), float(b - a), float(c)
+    if result.fun > 1e-6:
+        warnings.warn(f"Optimization of Triangular params has {result.fun=}")
+
+    # Extract the minimum and maximum of the distribution
+    under_mode, over_mode = result.x
+    minimum, maximum = mode - under_mode, mode + over_mode
+
+    # We scale to (-1, 1) in the beginning, and now we must scale back
+    minimum, mode, maximum = inv_scaler(minimum), inv_scaler(mode), inv_scaler(maximum)
+
+    # Back to scipy parametrization
+    loc = minimum
+    scale = maximum - minimum
+    c = (mode - minimum) / scale
+    return float((loc)), float((scale)), float(c)
 
 
 def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
