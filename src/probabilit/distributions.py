@@ -131,7 +131,7 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
         min, max = low, high
     else:
         # Estimate min and max from low and high
-        min, max = _pert_fit_min_max_from_percentiles(
+        min, max = _fit_pert_distribution(
             low,
             mode,
             high,
@@ -165,10 +165,12 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
+    if high_perc < low_perc:
+        raise ValueError("Low percentile must be less than high percentile.")
+
     # No need to optimize if low and high are boundaries of distribution support
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
         loc, scale, c = low, high - low, (mode - low) / (high - low)
-
     else:
         # Optimize parameters
         loc, scale, c = _fit_triangular_distribution(
@@ -322,18 +324,16 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     return a, b, loc, scale
 
 
-def _pert_fit_min_max_from_percentiles(
-    low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4
-):
+def _fit_pert_distribution(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4):
     """
     Returns the maximum and the minimum of a PERT distribution with
     percentiles corresponding to the inputs.
 
     Examples
     --------
-    >>> _pert_fit_min_max_from_percentiles(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
+    >>> _fit_pert_distribution(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
     (-1.29..., 8.74...)
-    >>> _pert_fit_min_max_from_percentiles(1, 5, 7)
+    >>> _fit_pert_distribution(1, 5, 7)
     (1.00..., 6.99...)
     """
     # Scale the problem with f(x) = x * a + b, to (-1, 1).

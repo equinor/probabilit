@@ -1,7 +1,7 @@
 from probabilit.distributions import (
     _fit_triangular_distribution,
     _pert_to_beta,
-    _pert_fit_min_max_from_percentiles,
+    _fit_pert_distribution,
     Lognormal,
     Uniform,
 )
@@ -121,7 +121,7 @@ class TestPERT:
         distr = beta(a, b, loc, scale)
         low, high = distr.ppf([low_perc, high_perc])
 
-        min_f, max_f = _pert_fit_min_max_from_percentiles(
+        min_f, max_f = _fit_pert_distribution(
             low, mode, high, low_perc=low_perc, high_perc=high_perc, gamma=gamma
         )
 
