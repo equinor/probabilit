@@ -48,7 +48,7 @@ from probabilit.modeling import Distribution, Log, Exp, Sign
 
 
 def Uniform(minimum=0, maximum=1):
-    """Uniform distribution on [min, max)."""
+    """Uniform distribution on [minimum, maximum)."""
     return Distribution("uniform", loc=minimum, scale=maximum - minimum)
 
 
