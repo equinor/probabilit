@@ -28,14 +28,14 @@ Distribution("uniform", loc=-1, scale=2)
 Distribution("uniform", loc=-1, scale=2)
 
 
-Some distributions are included here because they let us define a distribution
-using e.g. P10 and P90 instead of minimum and maximum. This is useful when an
+Some functions are included here to let us define a distribution using
+e.g. P10 and P90 instead of minimum and maximum. This is useful when an
 expert produces a tuple (low, mode, high) and we wish to fit to it:
 
 >>> price = PERT(low=100, mode=150, high=200, low_perc=0.1, high_perc=0.9)
 
-PERT will optimize for the mimum and maximum of the support of PERT,
-then convert it to a Beta parametrization for scipy:
+The PERT function will optimize for the minimum and maximum of the support of
+the PERT distribution, then convert it to a Beta parametrization for scipy:
 
 >>> price.to_scipy().kwds
 {'a': 3.00..., 'b': 2.99..., 'loc': 51.32..., 'scale': 197.34...}
@@ -47,9 +47,9 @@ import scipy as sp
 from probabilit.modeling import Distribution, Log, Exp, Sign
 
 
-def Uniform(min=0, max=1):
+def Uniform(minimum=0, maximum=1):
     """Uniform distribution on [min, max)."""
-    return Distribution("uniform", loc=min, scale=max - min)
+    return Distribution("uniform", loc=minimum, scale=maximum - minimum)
 
 
 def Normal(loc, scale):
