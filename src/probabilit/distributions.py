@@ -131,7 +131,7 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
         min, max = low, high
     else:
         # Estimate min and max from low and high
-        min, max = _pert_fit_min_max_from_percentiles(
+        min, max = _fit_pert_distribution(
             low,
             mode,
             high,
@@ -165,10 +165,12 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
+    if high_perc < low_perc:
+        raise ValueError("Low percentile must be less than high percentile.")
+
     # No need to optimize if low and high are boundaries of distribution support
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
         loc, scale, c = low, high - low, (mode - low) / (high - low)
-
     else:
         # Optimize parameters
         loc, scale, c = _fit_triangular_distribution(
@@ -227,8 +229,6 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
 
     low, mode, high = scaler(low), scaler(mode), scaler(high)
 
-    epsilon = np.finfo(float).eps ** 0.5
-
     def rmse_minimum_maximum(parameters):
         """Given (minimum, maximum) of a distribution, create the distribution,
         evaluate the inverse-CDF (PPF) and see how close (low, high) is to the
@@ -236,7 +236,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
 
         We parametrize this function by (under_mode, over_mode) because the
         constraints under_mode > 0 and over_mode > 0 implies that
-          low < mode < high
+        minimum < mode < maximum
         those two box constraints (non-negativity on each variable) are easier
         to deal with for most optimizers, compared to (minimum < maximum).
         """
@@ -265,6 +265,9 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     # We also ensure that initial guesses are positive
     under_mode0 = max((mode - low) * 0.5, 0) + 0.01
     over_mode0 = max((high - mode) * 0.5, 0) + 0.01
+
+    # Small number close to zero for optimization bounds
+    epsilon = np.finfo(float).eps ** 0.5
 
     result = sp.optimize.minimize(
         rmse_minimum_maximum,
@@ -321,49 +324,87 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     return a, b, loc, scale
 
 
-def _pert_fit_min_max_from_percentiles(
-    low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4
-):
+def _fit_pert_distribution(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4):
     """
     Returns the maximum and the minimum of a PERT distribution with
     percentiles corresponding to the inputs.
 
     Examples
     --------
-    >>> _pert_fit_min_max_from_percentiles(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
+    >>> _fit_pert_distribution(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
     (-1.29..., 8.74...)
-    >>> _pert_fit_min_max_from_percentiles(0, 5, 10)
-    (0.0, 10.0)
+    >>> _fit_pert_distribution(1, 5, 7)
+    (1.00..., 6.99...)
     """
+    # Scale the problem with f(x) = x * a + b, to (-1, 1).
+    # This makes all following optimization scale and shift invariant
+    a = 2 / (high - low)
+    b = 1 - (2 * high) / (high - low)
 
-    def pert_cdf(vars):
-        minimum, maximum = vars
+    def scaler(x):
+        return a * x + b
 
-        if not (minimum <= low and high <= maximum):
-            return [1e6, 1e6]
+    def inv_scaler(y):
+        return (y - b) / a
 
-        # Translate parameters to the beta distribution
+    low, mode, high = scaler(low), scaler(mode), scaler(high)
+
+    def rmse_minimum_maximum(parameters):
+        """Given (minimum, maximum) of a distribution, create the distribution,
+        evaluate the inverse-CDF (PPF) and see how close (low, high) is to the
+        desired values of (low, high).
+
+        We parametrize this function by (under_mode, over_mode) because the
+        constraints under_mode > 0 and over_mode > 0 implies that
+        minimum < mode < maximum
+        those two box constraints (non-negativity on each variable) are easier
+        to deal with for most optimizers, compared to (minimum < maximum).
+        """
+
+        # Parameterize as differences relative to the mode, so we obey
+        # the constraint: minimum < mode < maximum
+        under_mode, over_mode = parameters
+        assert under_mode > 0 and over_mode > 0
+
+        # Convert to minimum and maximum
+        minimum, maximum = mode - under_mode, mode + over_mode
+
+        # Create corresponding beta distribution
         alpha, beta, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma)
+        distr = sp.stats.beta(alpha, beta, loc=loc, scale=scale)
 
-        # The CDF of pert is given by the CDF of beta with the substitution
-        # z = (x-min)/(max-min)
-        beta_low = (low - loc) / scale
-        beta_high = (high - loc) / scale
+        # Check how close we are to the desired low and high
+        est_low, est_high = distr.ppf([low_perc, high_perc])
 
-        eq1 = sp.stats.beta.cdf(beta_low, alpha, beta) - low_perc
-        eq2 = sp.stats.beta.cdf(beta_high, alpha, beta) - high_perc
+        residuals = np.array([low - est_low, high - est_high])
+        return np.sqrt(np.mean(residuals**2))
 
-        return [eq1, eq2]
+    # Initial guesses for a and b, the lower and upper bounds for support
+    # The shift and scale are empirical: use what makes tests pass.
+    # We also ensure that initial guesses are positive
+    under_mode0 = max((mode - low) * 0.5, 0) + 0.01
+    over_mode0 = max((high - mode) * 0.5, 0) + 0.01
 
-    # Initial guesses: a < mode < b
-    guess = (low, high)
+    # Small number close to zero for optimization bounds
+    epsilon = np.finfo(float).eps ** 0.5
 
-    def squared_sum(x):
-        eqs = pert_cdf(x)
-        return eqs[0] ** 2 + eqs[1] ** 2
+    result = sp.optimize.minimize(
+        rmse_minimum_maximum,
+        x0=[under_mode0, over_mode0],
+        bounds=[(epsilon, np.inf), (epsilon, np.inf)],
+        method="L-BFGS-B",  # Empirical: we chose this method since tests pass
+    )
 
-    minimizer = sp.optimize.minimize(squared_sum, guess, method="Nelder-Mead")
-    return tuple(float(val) for val in minimizer.x)
+    if result.fun > 1e-6:
+        warnings.warn(f"Optimization of PERT params has {result.fun=}")
+
+    # Extract the minimum and maximum of the distribution
+    under_mode, over_mode = result.x
+    minimum, maximum = mode - under_mode, mode + over_mode
+
+    # We scale to (-1, 1) in the beginning, and now we must scale back
+    minimum, maximum = inv_scaler(minimum), inv_scaler(maximum)
+    return float(minimum), float(maximum)
 
 
 if __name__ == "__main__":
