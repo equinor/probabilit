@@ -52,24 +52,24 @@ def Uniform(minimum=0, maximum=1):
     return Distribution("uniform", loc=minimum, scale=maximum - minimum)
 
 
-def Normal(loc, scale):
+def Normal(mean=0, std=1):
     """Normal distribution parametrized by mean (loc) and std (scale)."""
-    return Distribution("norm", loc=loc, scale=scale)
+    return Distribution("norm", loc=mean, scale=std)
 
 
-def TruncatedNormal(loc, scale, low=-np.inf, high=np.inf):
+def TruncatedNormal(mean, std, *, low=-np.inf, high=np.inf):
     """A truncated Normal distribution parametrized by mean (loc) and
     std (scale) defined on [low, high).
 
     Examples
     --------
-    >>> distr = TruncatedNormal(loc=0, scale=1, low=3, high=3.3)
+    >>> distr = TruncatedNormal(mean=0, std=1, low=3, high=3.3)
     >>> distr.sample(7, random_state=0).round(3)
     array([3.13 , 3.182, 3.146, 3.129, 3.095, 3.159, 3.099])
     """
     # (a, b) are defined in terms of loc and scale, so transform them
-    a, b = (low - loc) / scale, (high - loc) / scale
-    return Distribution("truncnorm", a=a, b=b, loc=loc, scale=scale)
+    a, b = (low - mean) / std, (high - mean) / std
+    return Distribution("truncnorm", a=a, b=b, loc=mean, scale=std)
 
 
 class Lognormal(Distribution):
