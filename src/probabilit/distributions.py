@@ -24,7 +24,7 @@ Most of the custom distributions are syntactic sugar:
 
 >>> Distribution("uniform", loc=-1, scale=2)
 Distribution("uniform", loc=-1, scale=2)
->>> Uniform(min=-1, max=1)
+>>> Uniform(minimum=-1, maximum=1)
 Distribution("uniform", loc=-1, scale=2)
 
 
