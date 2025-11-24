@@ -137,7 +137,7 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
         raise ValueError("Percentiles must be between 0 and 1.")
 
     if high_perc <= low_perc:
-        raise ValueError("Must have {high_perc=} > {low_perc=}")
+        raise ValueError(f"Must have {high_perc=} > {low_perc=}")
 
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
         minimum, maximum = low, high
