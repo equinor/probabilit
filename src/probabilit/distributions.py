@@ -27,6 +27,18 @@ Distribution("uniform", loc=-1, scale=2)
 >>> Uniform(min=-1, max=1)
 Distribution("uniform", loc=-1, scale=2)
 
+
+Some distributions are included here because they let us define a distribution
+using e.g. P10 and P90 instead of minimum and maximum. This is useful when an
+expert produces a tuple (low, mode, high) and we wish to fit to it:
+
+>>> price = PERT(low=100, mode=150, high=200, low_perc=0.1, high_perc=0.9)
+
+PERT will optimize for the mimum and maximum of the support of PERT,
+then convert it to a Beta parametrization for scipy:
+
+>>> price.to_scipy().kwds
+{'a': 3.00..., 'b': 2.99..., 'loc': 51.32..., 'scale': 197.34...}
 """
 
 import numpy as np
@@ -124,14 +136,14 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
     if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
-    if high_perc < low_perc:
-        raise ValueError("Low percentile must be less than high percentile.")
+    if high_perc <= low_perc:
+        raise ValueError("Must have {high_perc=} > {low_perc=}")
 
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
-        min, max = low, high
+        minimum, maximum = low, high
     else:
         # Estimate min and max from low and high
-        min, max = _fit_pert_distribution(
+        minimum, maximum = _fit_pert_distribution(
             low,
             mode,
             high,
@@ -139,11 +151,13 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
             high_perc=high_perc,
             gamma=gamma,
         )
-    a, b, loc, scale = _pert_to_beta(min, mode, max, gamma=gamma)
+    a, b, loc, scale = _pert_to_beta(
+        minimum=minimum, mode=mode, maximum=maximum, gamma=gamma
+    )
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
-def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
+def Triangular(low, mode, high, *, low_perc=0.0, high_perc=1.0):
     """Find optimal scipy parametrization given (low, mode, high) and
     return Distribution("triang", loc=..., scale=..., c=...).
 
@@ -153,11 +167,9 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     Examples
     --------
     >>> Triangular(low=1, mode=5, high=9)
-    Distribution("triang", loc=-2.23..., scale=14.47..., c=0.50...)
+    Distribution("triang", loc=1, scale=8, c=0.5)
     >>> Triangular(low=1, mode=5, high=9, low_perc=0.25, high_perc=0.75)
     Distribution("triang", loc=-8.65..., scale=27.31..., c=0.50...)
-    >>> Triangular(low=1, mode=5, high=9, low_perc=0, high_perc=1)
-    Distribution("triang", loc=1, scale=8, c=0.5)
     """
     # A few comments on fitting can be found here:
     # https://docs.analytica.com/index.php/Triangular10_50_90
@@ -165,8 +177,8 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     if not ((0 <= low_perc <= 1.0) and (0 <= high_perc <= 1.0)):
         raise ValueError("Percentiles must be between 0 and 1.")
 
-    if high_perc < low_perc:
-        raise ValueError("Low percentile must be less than high percentile.")
+    if high_perc <= low_perc:
+        raise ValueError("Must have {high_perc=} > {low_perc=}")
 
     # No need to optimize if low and high are boundaries of distribution support
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
@@ -183,7 +195,7 @@ def Triangular(low, mode, high, low_perc=0.1, high_perc=0.9):
     return Distribution("triang", loc=loc, scale=scale, c=c)
 
 
-def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90):
+def _fit_triangular_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.90):
     """Returns a tuple (loc, scale, c) to be used with scipy.
 
     Description
@@ -236,7 +248,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
 
         We parametrize this function by (under_mode, over_mode) because the
         constraints under_mode > 0 and over_mode > 0 implies that
-        minimum < mode < maximum
+          minimum < mode < maximum
         those two box constraints (non-negativity on each variable) are easier
         to deal with for most optimizers, compared to (minimum < maximum).
         """
@@ -293,7 +305,7 @@ def _fit_triangular_distribution(low, mode, high, low_perc=0.10, high_perc=0.90)
     return float((loc)), float((scale)), float(c)
 
 
-def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
+def _pert_to_beta(minimum, mode, maximum, *, gamma=4.0):
     """Convert the PERT parametrization to a beta distribution.
 
     Returns (a, b, loc, scale).
@@ -308,6 +320,7 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     (6.4, 1.6, 0, 10)
     """
     # https://en.wikipedia.org/wiki/PERT_distribution
+    # https://github.com/Calvinxc1/PertDist/blob/6577394265f57153441b5908147d94115b9edeed/pert/pert.py#L80
     if not (minimum < mode < maximum):
         raise ValueError(f"Must have {minimum=} < {mode=} < {maximum=}")
     if gamma <= 0:
@@ -324,20 +337,19 @@ def _pert_to_beta(minimum, mode, maximum, gamma=4.0):
     return a, b, loc, scale
 
 
-def _fit_pert_distribution(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4):
+def _fit_pert_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.90, gamma=4):
     """
     Returns the maximum and the minimum of a PERT distribution with
     percentiles corresponding to the inputs.
 
     Examples
     --------
-    >>> _fit_pert_distribution(2, 5, 7, low_perc = 0.1, high_perc = 0.9, gamma = 4)
-    (-1.29..., 8.74...)
-    >>> _fit_pert_distribution(1, 5, 7)
+    >>> _fit_pert_distribution(1, 5, 7, low_perc=0, high_perc=1)
     (1.00..., 6.99...)
+    >>> _fit_pert_distribution(2, 5, 7, low_perc=0.1, high_perc=0.9)
+    (-1.29..., 8.74...)
     """
     # Scale the problem with f(x) = x * a + b, to (-1, 1).
-    # This makes all following optimization scale and shift invariant
     a = 2 / (high - low)
     b = 1 - (2 * high) / (high - low)
 
@@ -356,7 +368,7 @@ def _fit_pert_distribution(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamm
 
         We parametrize this function by (under_mode, over_mode) because the
         constraints under_mode > 0 and over_mode > 0 implies that
-        minimum < mode < maximum
+          minimum < mode < maximum
         those two box constraints (non-negativity on each variable) are easier
         to deal with for most optimizers, compared to (minimum < maximum).
         """
@@ -364,18 +376,18 @@ def _fit_pert_distribution(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamm
         # Parameterize as differences relative to the mode, so we obey
         # the constraint: minimum < mode < maximum
         under_mode, over_mode = parameters
-        assert under_mode > 0 and over_mode > 0
 
         # Convert to minimum and maximum
         minimum, maximum = mode - under_mode, mode + over_mode
 
         # Create corresponding beta distribution
-        alpha, beta, loc, scale = _pert_to_beta(minimum, mode, maximum, gamma)
-        distr = sp.stats.beta(alpha, beta, loc=loc, scale=scale)
+        a, b, loc, scale = _pert_to_beta(
+            minimum=minimum, mode=mode, maximum=maximum, gamma=gamma
+        )
+        distr = sp.stats.beta(a, b, loc=loc, scale=scale)
 
         # Check how close we are to the desired low and high
         est_low, est_high = distr.ppf([low_perc, high_perc])
-
         residuals = np.array([low - est_low, high - est_high])
         return np.sqrt(np.mean(residuals**2))
 
@@ -387,7 +399,6 @@ def _fit_pert_distribution(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamm
 
     # Small number close to zero for optimization bounds
     epsilon = np.finfo(float).eps ** 0.5
-
     result = sp.optimize.minimize(
         rmse_minimum_maximum,
         x0=[under_mode0, over_mode0],
