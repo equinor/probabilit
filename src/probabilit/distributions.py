@@ -178,7 +178,7 @@ def Triangular(low, mode, high, *, low_perc=0.0, high_perc=1.0):
         raise ValueError("Percentiles must be between 0 and 1.")
 
     if high_perc <= low_perc:
-        raise ValueError("Must have {high_perc=} > {low_perc=}")
+        raise ValueError(f"Must have {high_perc=} > {low_perc=}")
 
     # No need to optimize if low and high are boundaries of distribution support
     if np.isclose(low_perc, 0.0) and np.isclose(high_perc, 1.0):
