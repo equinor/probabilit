@@ -27,7 +27,6 @@ Distribution("uniform", loc=-1, scale=2)
 >>> Uniform(minimum=-1, maximum=1)
 Distribution("uniform", loc=-1, scale=2)
 
-
 Some functions are included here to let us define a distribution using
 e.g. P10 and P90 instead of minimum and maximum. This is useful when an
 expert produces a tuple (low, mode, high) and we wish to fit to it:
@@ -37,8 +36,9 @@ expert produces a tuple (low, mode, high) and we wish to fit to it:
 The PERT function will optimize for the minimum and maximum of the support of
 the PERT distribution, then convert it to a Beta parametrization for scipy:
 
->>> price.to_scipy().kwds
-{'a': 3.00..., 'b': 2.99..., 'loc': 51.32..., 'scale': 197.34...}
+>>> loc, scale = price.to_scipy().kwds["loc"], price.to_scipy().kwds["scale"]
+>>> (loc, loc + scale) #  Minimum and maximum of distribution
+(51.32..., 248.67...)
 """
 
 import numpy as np
