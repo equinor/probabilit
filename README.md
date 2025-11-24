@@ -8,6 +8,8 @@ A small Python package for Monte Carlo modeling.
 - Supports Quasi-Monte Carlo sampling, e.g. Sobol, Halton and LHS.
 - Supports inducing correlations with Iman-Conover.
 
+You can install it from [PyPI](https://pypi.org/project/probabilit/).
+
 ## Modeling
 
 The modeling API lets you create a computational graph, where each node is either a distribution, a constant or a transformation.
