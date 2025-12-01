@@ -4,9 +4,10 @@ from probabilit.distributions import (
     _fit_pert_distribution,
     Lognormal,
     Uniform,
+    trunclognorm,
 )
 import pytest
-from scipy.stats import triang, beta
+from scipy.stats import triang, beta, norm
 import numpy as np
 
 
@@ -104,6 +105,41 @@ class TestLognormal:
 
         np.testing.assert_allclose(np.mean(samples), expected_mean, rtol=0.05)
         np.testing.assert_allclose(np.std(samples), expected_std, rtol=0.05)
+
+
+class TestTruncatedLognorm:
+    @pytest.mark.parametrize("mu", [-1, 0, 1, 100])
+    @pytest.mark.parametrize("sigma", [0.1, 1, 10])
+    def test_trunclognorm_moments(self, mu, sigma):
+        rng = np.random.default_rng(42)
+        low = np.exp(mu - sigma)
+        high = np.exp(mu + sigma)
+        dist = trunclognorm(mu, sigma, low=low, high=high)
+        samples = dist.sample(10000, random_state=rng)
+
+        # Calculate an approxiamtion of the expected mu and sigma
+        lower = (np.log(low) - mu) / sigma
+        upper = (np.log(high) - mu) / sigma
+        Z = norm.cdf(upper) - norm.cdf(lower)
+
+        # Mu
+        mean_num = norm.cdf((np.log(high) - mu - sigma**2) / sigma) - norm.cdf(
+            (np.log(low) - mu - sigma**2) / sigma
+        )
+        expected_mu = np.exp(mu + sigma**2 / 2) * mean_num / Z
+
+        # Second moment
+        m2_num = norm.cdf((np.log(high) - mu - 2 * sigma**2) / sigma) - norm.cdf(
+            (np.log(low) - mu - 2 * sigma**2) / sigma
+        )
+        m2 = np.exp(2 * mu + 2 * sigma**2) * m2_num / Z
+
+        # Sigma
+        var = m2 - expected_mu**2
+        expected_sigma = np.sqrt(var)
+
+        np.testing.assert_allclose(np.mean(samples), expected_mu, rtol=0.05)
+        np.testing.assert_allclose(np.std(samples), expected_sigma, rtol=0.05)
 
 
 class TestPERT:
