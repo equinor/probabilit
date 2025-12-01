@@ -119,14 +119,17 @@ class Lognormal(Distribution):
 
 
 class TruncatedLognorm:
-    def __init__(self, mu, sigma, a, b):
+    """A class that implements the truncated lognormal distribution via the
+    truncated normal distribtion of scipy."""
+
+    def __init__(self, mu, sigma, low, high):
         self.mu = mu
         self.sigma = sigma
-        self.a = a
-        self.b = b
+        self.low = low
+        self.high = high
         # Compute truncnorm bounds
-        self.lower = (np.log(a) - mu) / sigma
-        self.upper = (np.log(b) - mu) / sigma
+        self.lower = (np.log(low) - mu) / sigma
+        self.upper = (np.log(high) - mu) / sigma
         self._truncnorm = sp.stats.truncnorm(
             self.lower, self.upper, loc=mu, scale=sigma
         )
@@ -147,9 +150,20 @@ class TruncatedLognorm:
         return np.exp(self._truncnorm.rvs(size=size, random_state=random_state))
 
 
-def trunclognorm(mu, sigma, a, b):
-    sp.stats.trunclognorm = TruncatedLognorm(mu, sigma, a, b)
-    return Distribution("trunclognorm", mu, sigma, a, b)
+def trunclognorm(mu, sigma, *, low=-np.inf, high=np.inf):
+    """Returns a truncated lognormal distributon defined on [low, high).
+    The parameters mu and sigma correspond to the mean and standard deviation
+    of the underlying normal distribution (i.e., the parameters of log(X) where
+    X is the lognormal random variable).
+
+    Examples
+    --------
+    >>> a = trunclognorm(0,1,low =0.1,high=0.9)
+    >>> a.sample(5,random_state=0)
+    array([0.51936617, 0.64519978, 0.55884662, 0.51653167, 0.43130621])
+    """
+    sp.stats.trunclognorm = TruncatedLognorm(mu, sigma, low, high)
+    return Distribution("trunclognorm", mu, sigma, low, high)
 
 
 def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
