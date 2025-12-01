@@ -118,6 +118,40 @@ class Lognormal(Distribution):
         return Distribution("lognorm", s=sigma, scale=Exp(mu))
 
 
+class TruncatedLognorm:
+    def __init__(self, mu, sigma, a, b):
+        self.mu = mu
+        self.sigma = sigma
+        self.a = a
+        self.b = b
+        # Compute truncnorm bounds
+        self.lower = (np.log(a) - mu) / sigma
+        self.upper = (np.log(b) - mu) / sigma
+        self._truncnorm = sp.stats.truncnorm(
+            self.lower, self.upper, loc=mu, scale=sigma
+        )
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def pdf(self, x):
+        return self._truncnorm.pdf(np.log(x)) / x
+
+    def cdf(self, x):
+        return self._truncnorm.cdf(np.log(x))
+
+    def ppf(self, q):
+        return np.exp(self._truncnorm.ppf(q))
+
+    def rvs(self, size=1, random_state=None):
+        return np.exp(self._truncnorm.rvs(size=size, random_state=random_state))
+
+
+def trunclognorm(mu, sigma, a, b):
+    sp.stats.trunclognorm = TruncatedLognorm(mu, sigma, a, b)
+    return Distribution("trunclognorm", mu, sigma, a, b)
+
+
 def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
     """Returns a Beta distribution, parameterized by the PERT parameters.
     Finds an optimal parametrization given (low, mode, high) and
