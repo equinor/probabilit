@@ -4,7 +4,7 @@ from probabilit.distributions import (
     _fit_pert_distribution,
     Lognormal,
     Uniform,
-    trunclognorm,
+    Trunclognorm,
 )
 import pytest
 from scipy.stats import triang, beta, norm
@@ -114,7 +114,7 @@ class TestTruncatedLognorm:
         rng = np.random.default_rng(42)
         low = np.exp(mu - sigma)
         high = np.exp(mu + sigma)
-        dist = trunclognorm(mu, sigma, low=low, high=high)
+        dist = Trunclognorm(mu, sigma, low=low, high=high)
         samples = dist.sample(10000, random_state=rng)
 
         # Calculate an approxiamtion of the expected mu and sigma

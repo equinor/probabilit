@@ -150,7 +150,7 @@ class TruncatedLognorm:
         return np.exp(self._truncnorm.rvs(size=size, random_state=random_state))
 
 
-def trunclognorm(mu, sigma, *, low=-np.inf, high=np.inf):
+def Trunclognorm(mu, sigma, *, low=-np.inf, high=np.inf):
     """Returns a truncated lognormal distributon defined on [low, high).
     The parameters mu and sigma correspond to the mean and standard deviation
     of the underlying normal distribution (i.e., the parameters of log(X) where
@@ -158,7 +158,7 @@ def trunclognorm(mu, sigma, *, low=-np.inf, high=np.inf):
 
     Examples
     --------
-    >>> a = trunclognorm(0,1,low =0.1,high=0.9)
+    >>> a = Trunclognorm(0,1,low =0.1,high=0.9)
     >>> a.sample(5,random_state=0)
     array([0.51936617, 0.64519978, 0.55884662, 0.51653167, 0.43130621])
     """
