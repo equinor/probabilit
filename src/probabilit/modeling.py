@@ -19,7 +19,7 @@ about the measurements:
 >>> price = box_volume * price_per_sqm
 >>> samples = price.sample(999, random_state=rng)
 >>> float(np.mean(samples))
-20.00139737515...
+20.00876430957...
 
 Distributions are built on top of scipy, so "norm" refers to the name of the
 normal distribution as given in `scipy.stats`, and the arguments to the
@@ -84,13 +84,13 @@ Add(Add(Power(Distribution("norm", loc=5, scale=1), Distribution("expon", scale=
 Sampling any node is done by calling the `.sample()` method:
 
 >>> expression.sample(5, random_state=rng)
-array([ 2.70764145, 36.58578812,  7.07064239,  1.84433247,  3.90951632])
+array([ 5.04060084,  5.19163254, 13.09590433, 20.23600678,  4.24147296])
 
 Sampling the expression has the side effect that `.samples_` is populated on
 *every* ancestor node in the expression, for instance:
 
 >>> a.samples_
-array([4.51589278, 4.37788659, 5.25960812, 5.80609507, 4.33770499])
+array([3.9254551 , 6.0788841 , 4.68923246, 3.48160505, 4.26149282])
 
 Here is an even more complex expression, showcasing some mathematical functions:
 
@@ -99,7 +99,8 @@ Here is an even more complex expression, showcasing some mathematical functions:
 >>> c = Distribution("norm", loc=0, scale=3)
 >>> expression = a*a - Add(a, b, c) + Abs(b)**Abs(c) + Exp(1 / Abs(c))
 >>> expression.sample(5, random_state=rng)
-array([ 4.70542018, 14.43250192,  6.74494838, -0.14020459, -3.27334554])
+array([ -4.9730559 , 103.74625257,   3.45199868,  14.50692883,
+        31.07178136])
 
 Nodes are hashable and can be used in sets, so __hash__ and __eq__ must both
 be defined. Therefore we cannot use `==` for modeling; equality in that context
@@ -202,7 +203,7 @@ The quantiles are passed to the inverse CDF (percent point function) when sampli
 >>> hypercube = LatinHypercube(d=d, rng=rng, optimization="random-cd")
 >>> hypercube_samples = hypercube.random(5) # Draw 5 samples
 >>> expression.sample_from_quantiles(hypercube_samples)
-array([ 7.80785741,  3.72416016,  3.77849849, -3.83561905, 38.02479019])
+array([ 8.2746582 ,  1.47340322,  1.71799415,  6.21188211, 41.63293414])
 
 
 Garbage collection
@@ -599,25 +600,64 @@ class Node(abc.ABC):
         # Set up garbage collection
         gc = GarbageCollector(strategy=gc_strategy).set_sink(self)
 
-        # Start with initial sampling nodes, which contain independent variables
-        initial_sampling_nodes = set(
-            node for node in self.nodes() if node._is_initial_sampling_node()
-        )
-        # Ensure consistent ordering for reproducible results
-        initial_sampling_nodes = sorted(initial_sampling_nodes, key=lambda n: n._id)
+        # Keep track of all nodes that are sampled and later garbarge-collected.
+        # If we do not keep track of these then they will be sampled twice.
+        # We will skip sampling nodes if either (1) samples_ is set or (2)
+        # they have been sampled and garbage collected.
+        garbage_collected = set()
 
-        # Loop over all initial sampling nodes (ISN) and sample them
+        def topo_sample(G, gc, garbage_collected):
+            """Sample nodes in a graph G in topological order.
+
+            Both the arguments gc (garbage collector) and sampled will be updated in place (mutated).
+            """
+
+            for node in nx.topological_sort(G):
+                # Skip if samples already exists or the node was sampled previously
+                if hasattr(node, "samples_") or node in garbage_collected:
+                    continue
+                elif isinstance(node, Constant):
+                    node.samples_ = node._sample(size=size)  # Draw constants
+                elif isinstance(node, AbstractDistribution):
+                    node.samples_ = node._sample(q=next(columns))  # Sample distr
+                elif isinstance(node, Transform):
+                    node.samples_ = node._sample()  # Propagate through transform
+                else:
+                    raise TypeError(
+                        "Node must be Constant, AbstractDistribution or Transform."
+                    )
+
+                is_numeric = (node.samples_ is not None) and np.issubdtype(
+                    node.samples_.dtype, np.number
+                )
+                if is_numeric and not np.all(np.isfinite(node.samples_)):
+                    raise ValueError(
+                        f"Sampling this node gave non-finite values: {node}\n{node.samples_}"
+                    )
+
+                # Tell the garbage collector that we sampled this node.
+                # If the reference counter reaches zero (a parent has no unsampled
+                # children), then the `.samples_` attribute of the parent might
+                # be deleted (if the garbage collection strategy allows it).
+                garbage_collected.update(
+                    gc.decrement_and_delete(node)
+                )  # Update inplace
+
+        # If there are no correlations to induce, then we can simply go through
+        # the graph in topological order and sample it.
+        # If there are correlations, then we must first sample up until and
+        # including nodes that are correlated, then correlate them, then sample
+        # the remaining graph. For instance, in the following graph:
+        # A ----> B ---> [C] ---> D
+        #                         |
+        #                         v
+        # E ---> [F] ---> G ----> result
+        # If nodes C and F are correlated, then we must sample A -> B -> C,
+        # then we sample E -> F, once we have samples on nodes C and F we
+        # can correlate those (ImanConover and Permuration) both simply permute
+        # the order. Finally we keep sampling D -> G -> result.
+
         G = self.to_graph()
-        for node in initial_sampling_nodes:
-            # Sample all ancestors of ISNs
-            ancestors = G.subgraph(nx.ancestors(G, node))
-            for ancestor in nx.topological_sort(ancestors):
-                assert isinstance(ancestor, (Constant, Transform))
-                ancestor.samples_ = ancestor._sample(size=size)
-
-            # Sample the ISN
-            assert isinstance(node, AbstractDistribution)
-            node.samples_ = node._sample(q=next(columns))
 
         # Go through all ancestor nodes and create a list [(var, corr), ...]
         # that contains all correlations we must induce
@@ -626,11 +666,32 @@ class Node(abc.ABC):
             if hasattr(node, "_correlations"):
                 correlations.extend(node._correlations)
 
-        # Check that each variable to correlate is an initial sampling node
-        for variables, _ in correlations:
-            for variable in variables:
-                if variable not in initial_sampling_nodes:
-                    raise ValueError(f"Cannot correlate variable: {variable}")
+        variable_sets = [set(variables) for (variables, _) in correlations]
+        # Map all variables to integers to associate them with a column
+        all_variables = list(functools.reduce(set.union, variable_sets, set()))
+        # Ensure consistent ordering for reproducible results
+        all_variables = sorted(all_variables, key=lambda n: n._id)
+
+        # Check that the set of variables that the user wants to correlate
+        # are allowed. The condition is that each variable and its ancestors
+        # must be disjoint sets. For instance, in the graph A -> B we cannot
+        # correlate A and B. In the graph A <- B -> C we cannot correlate
+        # A and C.
+        seen = set()
+        for variable in all_variables:
+            var_plus_ancestors = set(variable.nodes())
+
+            # If the variable, or any ancestor, has already been seen
+            if seen.intersection(var_plus_ancestors):
+                msg = f"Cannot correlate node: {variable}\n"
+                msg += "This variable is an ancestor of more than one variables\n"
+                msg += "that you wish to correlate. But this relationship can\n"
+                msg += "potentially already induce a correlation.\n"
+                msg += "For instance, in the graph A -> B you cannot correlate A and B."
+                msg += "In the graph A <- B -> C you cannot correlate A and C."
+                raise ValueError(msg)
+            else:
+                seen.update(var_plus_ancestors)
 
         # Check that no correlation has been specified twice
         variable_sets = [set(variables) for (variables, _) in correlations]
@@ -639,10 +700,17 @@ class Node(abc.ABC):
             if len(common) > 1:
                 raise ValueError(f"Correlations specified more than once: {common}")
 
-        # Map all variables to integers to associate them with a column
-        all_variables = list(functools.reduce(set.union, variable_sets, set()))
-        # Ensure consistent ordering for reproducible results
-        all_variables = sorted(all_variables, key=lambda n: n._id)
+        # Sample up untill nodes that we induce correlations on. In this graph:
+        # A ----> B ---> [C] ---> D
+        #                         |
+        #                         v
+        # E ---> [F] ---> G ----> result
+        # this means sampling up until and including C and F.
+        for variable in all_variables:
+            ancestors = G.subgraph(nx.ancestors(G, variable).union({variable}))
+            topo_sample(ancestors, gc=gc, garbage_collected=garbage_collected)
+
+        # Map to correlations
         var_to_int = {v: i for (i, v) in enumerate(all_variables)}
         correlations = [
             (tuple(var_to_int[var] for var in variables), corrmat)
@@ -664,35 +732,13 @@ class Node(abc.ABC):
             for var, sample in zip(all_variables, samples_ouput.T):
                 var.samples_ = np.copy(sample)
 
-        # Iterate sampling though the graph
-        for node in nx.topological_sort(G):
-            if hasattr(node, "samples_"):  # Skip if samples already exists
-                pass
-            elif isinstance(node, Constant):
-                node.samples_ = node._sample(size=size)  # Draw constants
-            elif isinstance(node, AbstractDistribution):
-                node.samples_ = node._sample(q=next(columns))  # Sample distr
-            elif isinstance(node, Transform):
-                node.samples_ = node._sample()  # Propagate through transform
-            else:
-                raise TypeError(
-                    "Node must be Constant, AbstractDistribution or Transform."
-                )
-
-            is_numeric = (node.samples_ is not None) and np.issubdtype(
-                node.samples_.dtype, np.number
-            )
-            if is_numeric and not np.all(np.isfinite(node.samples_)):
-                raise ValueError(
-                    f"Sampling this node gave non-finite values: {node}\n{node.samples_}"
-                )
-
-            # Tell the garbage collector that we sampled this node.
-            # If the reference counter reaches zero (a parent has no unsampled
-            # children), then the `.samples_` attribute of the parent might
-            # be deleted (only if the garbage collection strategy allows it).
-            gc.decrement_and_delete(node)
-
+        # Sample all the way to the end. In this graph:
+        # A ----> B ---> [C] ---> D
+        #                         |
+        #                         v
+        # E ---> [F] ---> G ----> result
+        # this would mean sampling from D and G.
+        topo_sample(self.to_graph(), gc=gc, garbage_collected=garbage_collected)
         return self.samples_
 
     def _is_initial_sampling_node(self):
