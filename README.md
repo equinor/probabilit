@@ -74,7 +74,7 @@ How much money will we have after 20 years?
 ...     returns = returns * interest + saved_per_year
 >>> samples = returns.sample(999, random_state=42)
 >>> samples.mean(), samples.std()
-(np.float64(76583.58738496085), np.float64(33483.2245611436))
+(np.float64(76630.89701703968), np.float64(34507.63482771612))
 
 ```
 
