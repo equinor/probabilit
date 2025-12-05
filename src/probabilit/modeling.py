@@ -693,7 +693,7 @@ class Node(abc.ABC):
             if len(common) > 1:
                 raise ValueError(f"Correlations specified more than once: {common}")
 
-        # Sample up untill nodes that we induce correlations on. In this graph:
+        # Sample up until nodes that we induce correlations on. In this graph:
         # A ----> B ---> [C] ---> D
         #                         |
         #                         v
