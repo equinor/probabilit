@@ -345,13 +345,6 @@ def python_to_prob(argument):
 #
 # Some further terminology:
 #   * The _ancestors_ of node "-" are {"+", "2", "mu", "normal"}
-#   * A node is said to be an _initial sampling node_ iff
-#      (1) The node is a Distribution
-#      (2) None of its ancestors are Distributions
-#     For instance, in the graph above, the node "mu" is an initial sampling node.
-#     Initial sampling nodes are the nodes that we can impose correlations on.
-#     We cannot impose correlations on "normal" above, since its correlation
-#     is determined by the graph structure.
 #   * result.sample() samples the expression "mu + normal - 2" by propagating
 #     through the graph, parents first. More specifically, each category of nodes
 #     (Constant, Transform and Distribution) have their own internal _sample methods
@@ -583,10 +576,9 @@ class Node(abc.ABC):
         }
         if isinstance(correlator, str):
             correlator = correlator.lower().strip()
-            if correlator not in CORRELATOR_MAP.keys():
-                raise ValueError(
-                    f"`{correlator=}` must be in {set(CORRELATOR_MAP.keys())}"
-                )
+            valid_corrs = set(CORRELATOR_MAP.keys())
+            if correlator not in valid_corrs:
+                raise ValueError(f"`{correlator=}` not in {valid_corrs}")
             correlator = CORRELATOR_MAP[correlator]  # Map to instance
 
         # Prepare columns of quantiles, one column for each Distribution
@@ -602,14 +594,15 @@ class Node(abc.ABC):
 
         # Keep track of all nodes that are sampled and later garbarge-collected.
         # If we do not keep track of these then they will be sampled twice.
-        # We will skip sampling nodes if either (1) samples_ is set or (2)
-        # they have been sampled and garbage collected.
+        # We will skip sampling a node if either (1) samples_ is set or (2)
+        # the node has previously been sampled and garbage collected.
         garbage_collected = set()
 
         def topo_sample(G, gc, garbage_collected):
             """Sample nodes in a graph G in topological order.
 
-            Both the arguments gc (garbage collector) and sampled will be updated in place (mutated).
+            Both the arguments `gc` (garbage collector) and `garbage_collected`
+            will be updated in place (mutated).
             """
 
             for node in nx.topological_sort(G):
@@ -631,31 +624,28 @@ class Node(abc.ABC):
                     node.samples_.dtype, np.number
                 )
                 if is_numeric and not np.all(np.isfinite(node.samples_)):
-                    raise ValueError(
-                        f"Sampling this node gave non-finite values: {node}\n{node.samples_}"
-                    )
+                    msg = f"Sampling gave non-finite values: {node}\n{node.samples_}"
+                    raise ValueError(msg)
 
                 # Tell the garbage collector that we sampled this node.
                 # If the reference counter reaches zero (a parent has no unsampled
                 # children), then the `.samples_` attribute of the parent might
                 # be deleted (if the garbage collection strategy allows it).
-                garbage_collected.update(
-                    gc.decrement_and_delete(node)
-                )  # Update inplace
+                garbage_collected.update(gc.decrement_and_delete(node))
 
         # If there are no correlations to induce, then we can simply go through
         # the graph in topological order and sample it.
         # If there are correlations, then we must first sample up until and
-        # including nodes that are correlated, then correlate them, then sample
-        # the remaining graph. For instance, in the following graph:
+        # including nodes that are to be correlated, then correlate them, then
+        # sample the remaining graph. For instance, consider the graph:
         # A ----> B ---> [C] ---> D
         #                         |
         #                         v
         # E ---> [F] ---> G ----> result
-        # If nodes C and F are correlated, then we must sample A -> B -> C,
-        # then we sample E -> F, once we have samples on nodes C and F we
-        # can correlate those (ImanConover and Permuration) both simply permute
-        # the order. Finally we keep sampling D -> G -> result.
+        # If nodes C and F are to be correlated, then we sample A -> B -> C,
+        # followed by E -> F, once we have samples on nodes C and F we
+        # can correlate those permuting the order of the samples (ImanConover).
+        # Finally we keep sampling D -> G -> result.
 
         G = self.to_graph()
 
@@ -668,17 +658,18 @@ class Node(abc.ABC):
 
         variable_sets = [set(variables) for (variables, _) in correlations]
         # Map all variables to integers to associate them with a column
-        all_variables = list(functools.reduce(set.union, variable_sets, set()))
+        corr_variables = list(functools.reduce(set.union, variable_sets, set()))
         # Ensure consistent ordering for reproducible results
-        all_variables = sorted(all_variables, key=lambda n: n._id)
+        corr_variables = sorted(corr_variables, key=lambda n: n._id)
 
         # Check that the set of variables that the user wants to correlate
         # are allowed. The condition is that each variable and its ancestors
         # must be disjoint sets. For instance, in the graph A -> B we cannot
         # correlate A and B. In the graph A <- B -> C we cannot correlate
-        # A and C.
+        # A and C. In general we can only correlate nodes whose correlation
+        # cannot potentially be determined already from the graph structure.
         seen = set()
-        for variable in all_variables:
+        for variable in corr_variables:
             var_plus_ancestors = set(variable.nodes())
 
             # If the variable, or any ancestor, has already been seen
@@ -687,7 +678,9 @@ class Node(abc.ABC):
                 msg += "This variable is an ancestor of more than one variables\n"
                 msg += "that you wish to correlate. But this relationship can\n"
                 msg += "potentially already induce a correlation.\n"
-                msg += "For instance, in the graph A -> B you cannot correlate A and B."
+                msg += (
+                    "For instance, in the graph A -> B you cannot correlate A and B.\n"
+                )
                 msg += "In the graph A <- B -> C you cannot correlate A and C."
                 raise ValueError(msg)
             else:
@@ -706,12 +699,12 @@ class Node(abc.ABC):
         #                         v
         # E ---> [F] ---> G ----> result
         # this means sampling up until and including C and F.
-        for variable in all_variables:
+        for variable in corr_variables:
             ancestors = G.subgraph(nx.ancestors(G, variable).union({variable}))
             topo_sample(ancestors, gc=gc, garbage_collected=garbage_collected)
 
         # Map to correlations
-        var_to_int = {v: i for (i, v) in enumerate(all_variables)}
+        var_to_int = {v: i for (i, v) in enumerate(corr_variables)}
         correlations = [
             (tuple(var_to_int[var] for var in variables), corrmat)
             for (variables, corrmat) in correlations
@@ -727,9 +720,9 @@ class Node(abc.ABC):
             correlator = correlator.set_target(correlation_matrix)
 
             # Concatenate samples, correlate them (shift rows in each col), then re-assign
-            samples_input = np.vstack([var.samples_ for var in all_variables]).T
+            samples_input = np.vstack([var.samples_ for var in corr_variables]).T
             samples_ouput = correlator(samples_input)
-            for var, sample in zip(all_variables, samples_ouput.T):
+            for var, sample in zip(corr_variables, samples_ouput.T):
                 var.samples_ = np.copy(sample)
 
         # Sample all the way to the end. In this graph:
