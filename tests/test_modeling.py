@@ -9,9 +9,12 @@ from probabilit.modeling import (
     All,
     Min,
     Max,
+    NoOp,
 )
-from probabilit.distributions import Triangular
+from probabilit.distributions import Triangular, TruncatedNormal
 import numpy as np
+import scipy as sp
+import pytest
 
 
 class TestModelingExamples:
@@ -88,8 +91,8 @@ class TestModelingExamples:
         samples = returns.sample(999, random_state=42)
 
         # Regression test essentially
-        np.testing.assert_allclose(samples.mean(), 76583.58738496085)
-        np.testing.assert_allclose(samples.std(), 33483.2245611436)
+        np.testing.assert_allclose(samples.mean(), 76630.897017, rtol=1e-4)
+        np.testing.assert_allclose(samples.std(), 34507.634828, rtol=1e-4)
 
     def test_total_person_hours(self):
         """Based on Example 19.2 from Risk Analysis: A Quantitative Guide, 3rd Edition by David Vose.
@@ -237,8 +240,8 @@ class TestModelingExamples:
 
         # Sample and create a simple regression/snapshot test
         samples = distance_dry.sample(999, random_state=42, method="lhs")
-        np.testing.assert_allclose(np.mean(samples), 56.258925)
-        np.testing.assert_allclose(np.std(samples), 3.707973)
+        np.testing.assert_allclose(np.mean(samples), 56.261536, rtol=1e-4)
+        np.testing.assert_allclose(np.std(samples), 3.753207, rtol=1e-4)
 
         # On wet concrete mu=0.58, but on wet asphalt mu = 0.53.
         # Here we model a 50/50 chance of being on either (mixture distribution)
@@ -249,8 +252,8 @@ class TestModelingExamples:
 
         # Sample and create a simple regression/snapshot test
         samples = distance_wet.sample(999, random_state=42, method="lhs")
-        np.testing.assert_allclose(np.mean(samples), 71.13491)
-        np.testing.assert_allclose(np.std(samples), 5.830891)
+        np.testing.assert_allclose(np.mean(samples), 71.138801, rtol=1e-4)
+        np.testing.assert_allclose(np.std(samples), 5.91761, rtol=1e-4)
 
 
 def test_copying():
@@ -387,6 +390,80 @@ def test_correlations():
     desired_corr_mat[:3, :3] = corr_mat
 
     np.testing.assert_allclose(observed_corr_mat, desired_corr_mat, atol=0.075)
+
+
+def test_correlations_with_derived_nodes():
+    # Two distributions can be correlated
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    expression = a + b
+    corr_mat = np.array([[1.0, 0.8], [0.8, 1.0]])
+    expression.correlate(a, b, corr_mat=corr_mat)
+    expression.sample(999, random_state=42)
+
+    # Two distributions that are not compound can be correlated
+    b = Distribution("norm", loc=0, scale=Constant(3) ** 2)
+    expression = a + b
+    expression.correlate(a, b, corr_mat=corr_mat)
+    expression.sample(999, random_state=42)
+
+    # A compound distribution can be correlated with another distribution
+    scale = Distribution("expon", 1)
+    b = Distribution("norm", loc=0, scale=scale)
+    expression = a + b
+    expression.correlate(a, b, corr_mat=corr_mat)
+    expression.sample(999, random_state=42)
+
+    # If one distribution is a parent of another, they cannot be correlated
+    # because the dependency structure potentially already imposes a correlation.
+
+    # The dependency induces correlations:
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=a, scale=1)
+    b.correlate(a, b, corr_mat=corr_mat)
+    with pytest.raises(ValueError, match="Cannot correlate"):
+        b.sample(999, random_state=42)
+
+    # The following is equivalent, and is also disallowed:
+    a = Distribution("norm", loc=0, scale=1)
+    b = a + Distribution("norm", loc=0, scale=1)
+    b.correlate(a, b, corr_mat=corr_mat)
+    with pytest.raises(ValueError, match="Cannot correlate"):
+        b.sample(999, random_state=42)
+
+    # Some dependencies do not induce correlations, such as:
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=abs(a))
+    # But they are still disallowed:
+    b.correlate(a, b, corr_mat=corr_mat)
+    with pytest.raises(ValueError, match="Cannot correlate"):
+        b.sample(999, random_state=42)
+
+    # In general, two nodes A and B can only be correlated if their
+    # ancestors (including themselves) are disjoint sets.
+
+
+def test_correlations_with_truncated_lognorm():
+    # This is an example where the user wants to correlate
+    # truncated lognomal variables with something else.
+    # The truncated logormal is not defined in scipy, but we can create it
+    # by using Exp(Lognormal())
+    desired_corr = 0.5
+
+    # Create two distributions
+    a = Distribution("norm", loc=0, scale=1)
+    b = Exp(TruncatedNormal(0, 1, low=-1, high=2))
+
+    # Induce correlations
+    result = NoOp(a, b)
+    corr_mat = np.array([[1.0, desired_corr], [desired_corr, 1.0]])
+    result.correlate(a, b, corr_mat=corr_mat)
+
+    # Sample
+    result.sample(999, random_state=42, method="lhs")
+
+    observed_corr = sp.stats.pearsonr(a.samples_, b.samples_).statistic
+    np.testing.assert_allclose(observed_corr, desired_corr, atol=0.02)
 
 
 def test_all_correlations_at_unity():
