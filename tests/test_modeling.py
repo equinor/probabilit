@@ -9,9 +9,11 @@ from probabilit.modeling import (
     All,
     Min,
     Max,
+    NoOp,
 )
-from probabilit.distributions import Triangular
+from probabilit.distributions import Triangular, TruncatedNormal
 import numpy as np
+import scipy as sp
 import pytest
 
 
@@ -439,6 +441,29 @@ def test_correlations_with_derived_nodes():
 
     # In general, two nodes A and B can only be correlated if their
     # ancestors (including themselves) are disjoint sets.
+
+
+def test_correlations_with_truncated_lognorm():
+    # This is an example where the user wants to correlate
+    # truncated lognomal variables with something else.
+    # The truncated logormal is not defined in scipy, but we can create it
+    # by using Exp(Lognormal())
+    desired_corr = 0.5
+
+    # Create two distributions
+    a = Distribution("norm", loc=0, scale=1)
+    b = Exp(TruncatedNormal(0, 1, low=-1, high=2))
+
+    # Induce correlations
+    result = NoOp(a, b)
+    corr_mat = np.array([[1.0, desired_corr], [desired_corr, 1.0]])
+    result.correlate(a, b, corr_mat=corr_mat)
+
+    # Sample
+    result.sample(999, random_state=42, method="lhs")
+
+    observed_corr = sp.stats.pearsonr(a.samples_, b.samples_).statistic
+    np.testing.assert_allclose(observed_corr, desired_corr, atol=0.02)
 
 
 def test_all_correlations_at_unity():
