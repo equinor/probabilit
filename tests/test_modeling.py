@@ -12,7 +12,6 @@ from probabilit.modeling import (
     NoOp,
 )
 from probabilit.distributions import Triangular, TruncatedNormal
-from probabilit.correlation import ImanConover
 import numpy as np
 import scipy as sp
 import pytest
