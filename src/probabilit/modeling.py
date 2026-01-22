@@ -287,7 +287,7 @@ from probabilit.correlation import (
     Composite,
     Permutation,
 )
-from probabilit.utils import build_corrmat, zip_args
+from probabilit.utils import zip_args
 from probabilit.garbage_collector import GarbageCollector
 import copy
 
@@ -712,18 +712,16 @@ class Node(abc.ABC):
 
         # If there are any correlations to induce, do so
         if correlations:
-            # Induce correlations
-            correlation_matrix = build_corrmat(correlations)
-            correlation_matrix = nearest_correlation_matrix(correlation_matrix)
+            for idxs, corr_mat in correlations:
+                corr_mat = nearest_correlation_matrix(np.asarray(corr_mat))
+                group_correlator = correlator.set_target(corr_mat)
 
-            # Set the target (goal) correlation matrix
-            correlator = correlator.set_target(correlation_matrix)
+                # Stack only this group's variables, correlate, then write back
+                samples_input = np.vstack([corr_variables[i].samples_ for i in idxs]).T
+                samples_output = group_correlator(samples_input)
 
-            # Concatenate samples, correlate them (shift rows in each col), then re-assign
-            samples_input = np.vstack([var.samples_ for var in corr_variables]).T
-            samples_ouput = correlator(samples_input)
-            for var, sample in zip(corr_variables, samples_ouput.T):
-                var.samples_ = np.copy(sample)
+                for i, sample in zip(idxs, samples_output.T):
+                    corr_variables[i].samples_ = np.copy(sample)
 
         # Sample all the way to the end. In this graph:
         # A ----> B ---> [C] ---> D
@@ -731,6 +729,7 @@ class Node(abc.ABC):
         #                         v
         # E ---> [F] ---> G ----> result
         # this would mean sampling from D and G.
+
         topo_sample(self.to_graph(), gc=gc, garbage_collected=garbage_collected)
         return self.samples_
 
