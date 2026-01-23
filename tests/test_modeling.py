@@ -412,7 +412,7 @@ def test_total_correlations_larger_than_sample_size():
     expression.correlate(c, d, corr_mat=corr_mat_cd)
     expression.correlate(e, f, corr_mat=corr_mat_ef)
 
-    # Smoketest, this should not raise an error
+    # Smoketest. Should not raise even though samples < variables
     expression.sample(size=5, random_state=42, method="lhs")
 
 
