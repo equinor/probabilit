@@ -713,7 +713,7 @@ class Node(abc.ABC):
         # If there are any correlations to induce, do so
         if correlations:
             for idxs, corr_mat in correlations:
-                corr_mat = nearest_correlation_matrix(np.asarray(corr_mat))
+                corr_mat = nearest_correlation_matrix(np.array(corr_mat))
                 group_correlator = correlator.set_target(corr_mat)
 
                 # Stack only this group's variables, correlate, then write back
