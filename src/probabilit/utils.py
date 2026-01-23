@@ -90,31 +90,6 @@ def zip_args(args, kwargs):
         yield args_i, dict(zip(kwargs.keys(), kwargs_i))
 
 
-def build_corrmat(correlations):
-    """Given a list of [(indices1, corrmat1), (indices2, corrmat2), ...],
-    create a big correlation matrix.
-
-    Examples
-    --------
-    >>> correlations = [((0, 2), np.array([[1, 0.5], [0.5, 1]]))]
-    >>> build_corrmat(correlations)
-    array([[1. , 0. , 0.5],
-           [0. , 1. , 0. ],
-           [0.5, 0. , 1. ]])
-    """
-    # TODO: If no correlation is given, we implicitly assume zero.
-    # For instance, if no correlation between indices (0, 3) is given
-    # in the input data, then C[0, 3] = C[3, 0] = 0.0, which is strictly
-    # speaking not the same (no preference vs. preference for 0 corr)
-    n = max(max(idx) for (idx, _) in correlations)
-    C = np.eye(n + 1, dtype=float)
-
-    for idx_i, corrmat_i in correlations:
-        C[np.ix_(idx_i, idx_i)] = corrmat_i
-
-    return C
-
-
 if __name__ == "__main__":
     import pytest
 
