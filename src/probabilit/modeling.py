@@ -690,7 +690,7 @@ class Node(abc.ABC):
         variable_sets = [set(variables) for (variables, _) in correlations]
         for vars1, vars2 in itertools.combinations(variable_sets, 2):
             common = vars1.intersection(vars2)
-            if len(common) > 1:
+            if len(common) >= 1:
                 raise ValueError(f"Correlations specified more than once: {common}")
 
         # Sample up until nodes that we induce correlations on. In this graph:
