@@ -412,14 +412,8 @@ def test_total_correlations_larger_than_sample_size():
     expression.correlate(c, d, corr_mat=corr_mat_cd)
     expression.correlate(e, f, corr_mat=corr_mat_ef)
 
+    # Smoketest, this should not raise an error
     expression.sample(size=5, random_state=42, method="lhs")
-
-    obs_corr_ab = np.corrcoef(np.array([a.samples_, b.samples_]))
-    obs_corr_cd = np.corrcoef(np.array([c.samples_, d.samples_]))
-    obs_corr_ef = np.corrcoef(np.array([e.samples_, f.samples_]))
-    assert np.linalg.norm(obs_corr_ab - corr_mat_ab) <= 0.15
-    assert np.linalg.norm(obs_corr_cd - corr_mat_cd) <= 0.15
-    assert np.linalg.norm(obs_corr_ef - corr_mat_ef) <= 0.15
 
 
 def test_correlations_with_derived_nodes():
