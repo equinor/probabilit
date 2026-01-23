@@ -416,6 +416,24 @@ def test_total_correlations_larger_than_sample_size():
     expression.sample(size=5, random_state=42, method="lhs")
 
 
+def test_error_when_overlapping_correlations():
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
+    expression = a + b + c
+
+    corr_mat_ab = np.array([[1.0, 0.5], [0.5, 1.0]])
+    corr_mat_ac = np.array([[1.0, -0.5], [-0.5, 1.0]])
+
+    expression.correlate(a, b, corr_mat=corr_mat_ab)
+    expression.correlate(a, c, corr_mat=corr_mat_ac)
+
+    # Sampling should raise an error due to overlapping
+    # correlation groups
+    with pytest.raises(ValueError):
+        expression.sample(size=5, random_state=42, method="lhs")
+
+
 def test_correlations_with_derived_nodes():
     # Two distributions can be correlated
     a = Distribution("norm", loc=0, scale=1)
