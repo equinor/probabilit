@@ -392,6 +392,48 @@ def test_correlations():
     np.testing.assert_allclose(observed_corr_mat, desired_corr_mat, atol=0.075)
 
 
+def test_total_correlations_larger_than_sample_size():
+    # This test verifies that rank-based correlation induction works even when
+    # the total number of correlated variables exceeds the sample size, as
+    # long as each correlation group is smaller than the sample size.
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
+    d = Distribution("norm", loc=0, scale=1)
+    e = Distribution("norm", loc=0, scale=1)
+    f = Distribution("norm", loc=0, scale=1)
+    expression = a + b + c + d + e + f
+
+    corr_mat_ab = np.array([[1.0, 0.5], [0.5, 1.0]])
+    corr_mat_cd = np.array([[1.0, -0.5], [-0.5, 1.0]])
+    corr_mat_ef = np.array([[1.0, 0.3], [0.3, 1.0]])
+
+    expression.correlate(a, b, corr_mat=corr_mat_ab)
+    expression.correlate(c, d, corr_mat=corr_mat_cd)
+    expression.correlate(e, f, corr_mat=corr_mat_ef)
+
+    # Smoketest. Should not raise even though samples < variables
+    expression.sample(size=5, random_state=42, method="lhs")
+
+
+def test_error_when_overlapping_correlations():
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
+    expression = a + b + c
+
+    corr_mat_ab = np.array([[1.0, 0.5], [0.5, 1.0]])
+    corr_mat_ac = np.array([[1.0, -0.5], [-0.5, 1.0]])
+
+    expression.correlate(a, b, corr_mat=corr_mat_ab)
+    expression.correlate(a, c, corr_mat=corr_mat_ac)
+
+    # Sampling should raise an error due to overlapping
+    # correlation groups
+    with pytest.raises(ValueError):
+        expression.sample(size=5, random_state=42, method="lhs")
+
+
 def test_correlations_with_derived_nodes():
     # Two distributions can be correlated
     a = Distribution("norm", loc=0, scale=1)
