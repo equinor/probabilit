@@ -525,6 +525,46 @@ def test_all_correlations_at_unity():
     assert np.linalg.norm(obs_corr - corr_mat) <= 0.00015
 
 
+def test_off_diagonal_correlations():
+    """Create two groups of variables, then that each group attains desired
+    correlations. Then check that cross-correlations between the two
+    groups are close to zero."""
+
+    # First group
+    a = Distribution("norm", loc=0, scale=1)
+    b = Distribution("norm", loc=0, scale=1)
+    c = Distribution("norm", loc=0, scale=1)
+    corr1 = np.ones(shape=(3, 3)) * 0.5
+    np.fill_diagonal(corr1, 1.0)
+
+    # Second group
+    d = Distribution("norm", loc=0, scale=1)
+    e = Distribution("norm", loc=0, scale=1)
+    f = Distribution("norm", loc=0, scale=1)
+    corr2 = np.ones(shape=(3, 3)) * 0.8
+    np.fill_diagonal(corr2, 1.0)
+
+    # Apply correlations and sample expression
+    expression = a + b + c + d + e + f
+    expression.correlate(a, b, c, corr_mat=corr1)
+    expression.correlate(d, e, f, corr_mat=corr2)
+    expression.sample(size=999, random_state=42, method="lhs")
+
+    def rmse(A):
+        return np.sqrt(np.mean((A) ** 2))
+
+    # Verify each correlation group individually
+    obs_corr1 = np.corrcoef(np.array([a.samples_, b.samples_, c.samples_]))
+    obs_corr2 = np.corrcoef(np.array([d.samples_, e.samples_, f.samples_]))
+
+    assert rmse(obs_corr1 - corr1) <= 0.005
+    assert rmse(obs_corr2 - corr2) <= 0.005
+
+    # Verify that cross diagonal terms (off diagonals in block) are close to 0
+    obs_corr = np.corrcoef(np.array([var.samples_ for var in [a, b, c, d, e, f]]))
+    assert rmse(obs_corr - sp.linalg.block_diag(corr1, corr2)) <= 0.05
+
+
 if __name__ == "__main__":
     import pytest
 
