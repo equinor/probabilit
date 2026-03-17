@@ -216,9 +216,7 @@ class Cholesky(Correlator):
     Parameters
     ----------
     correlation_matrix : ndarray
-        Target correlation matrix of shape (K, K). The Iman-Conover will
-        try to induce a correlation on the data set X so that corr(X) is
-        as close to `correlation_matrix` as possible.
+        Target correlation matrix of shape (K, K).
 
     Examples
     --------
@@ -931,7 +929,29 @@ class CorrelationMatrix:
 
 @dataclasses.dataclass(init=False, repr=True, eq=False)
 class Composite(Correlator):
-    """A composition where we first run ImanConover, then Permutation."""
+    """A composition where we first run ImanConover, then Permutation.
+
+    Examples
+    --------
+
+    This example shows a data matrix X with more variables than observations.
+
+    >>> correlation_matrix = np.eye(4)
+    >>> rng = np.random.default_rng(42)
+    >>> X = rng.normal(size=(3, 4))
+    >>> corr_X = np.corrcoef(X, rowvar=False)
+    >>> corr_X[np.tril_indices_from(corr_X, k=-1)].round(2)
+    array([0.85, 0.96, 0.96, 1.  , 0.85, 0.96])
+
+    The composite correlator will be able to remove some correlations,
+    but some remain high because there are few observations to permute:
+
+    >>> transform = Composite(random_state=42).set_target(correlation_matrix)
+    >>> Xt = transform(X)
+    >>> corr_Xt = np.corrcoef(Xt, rowvar=False)
+    >>> corr_Xt[np.tril_indices_from(corr_Xt, k=-1)].round(2)
+    array([-0.23,  1.  , -0.25, -0.27, -0.88, -0.24])
+    """
 
     def __init__(self, *args, **kwargs):
         self.iman_conover_correlator = ImanConover()
@@ -943,8 +963,15 @@ class Composite(Correlator):
         return self
 
     def __call__(self, X):
-        # First run ImanConover to get a good starting point
-        X_ic = self.iman_conover_correlator(X)
+        try:
+            # First run ImanConover to get a good starting point
+            X_ic = self.iman_conover_correlator(X)
+        except ValueError as e:
+            if "The matrix X must have rows > columns" in str(e):
+                X_ic = X
+            else:
+                raise  # re-raise if it's a different ValueError
+
         # Then run Permutation
         return self.permutation_correlator(X_ic)
 
