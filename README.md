@@ -93,14 +93,14 @@ Below a user has specified some correlations, but the resulting correlation matr
 >>> X = np.array([[1, 0.9, 0],
 ...               [0.9, 1, 0.8],
 ...               [0, 0.8, 1]])
->>> np.linalg.eigvals(X) # Not a valid correlation matrix
+>>> np.linalg.eigvalsh(X) # Not a valid correlation matrix
 array([-0.20415946,  1.        ,  2.20415946])
 >>> nearest_correlation_matrix(X)
 array([[1.        , 0.77523696, 0.07905637],
        [0.77523696, 1.        , 0.69097837],
        [0.07905637, 0.69097837, 1.        ]])
->>> np.linalg.eigvals(nearest_correlation_matrix(X))
-array([2.07852823e+00, 9.21470108e-01, 1.66710188e-06])
+>>> np.linalg.eigvalsh(nearest_correlation_matrix(X))
+array([1.66710188e-06, 9.21470108e-01, 2.07852823e+00])
 
 ```
 
