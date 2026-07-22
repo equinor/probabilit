@@ -5,14 +5,24 @@ Inspection
 Inspection of results, plotting, tables, exporting, etc.
 """
 
-import seaborn
-import pandas as pd
-from probabilit.modeling import NoOp, Distribution, Transform
-import numpy as np
 from numbers import Number
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import seaborn
+from seaborn.axisgrid import PairGrid
+
+from probabilit.modeling import Distribution, Node, NoOp, Transform
+from probabilit.types import Array2D
 
 
-def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
+def plot(
+    *variables: Distribution,
+    corr: Array2D | None = None,
+    sample_kwargs: Any = None,
+    **kwargs: Any,
+) -> PairGrid:
     """Utility function for quick plotting of one or several variables.
 
     Examples
@@ -62,7 +72,7 @@ def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
     return seaborn.pairplot(df, **kwargs)
 
 
-def treeprint(node):
+def treeprint(node: Node) -> None:
     """Print a computational graph in a tree-like fashion.
 
     Examples
@@ -82,7 +92,12 @@ def treeprint(node):
     """
     elbow, pipe, tee, blank = "└──", "│  ", "├──", "   "
 
-    def _treeprint(node, last=True, header="", root=False):
+    def _treeprint(
+        node: Node,
+        last: bool = True,
+        header: str = "",
+        root: bool = False,
+    ) -> None:
         # Recursive version
         output = type(node).__name__ if isinstance(node, Transform) else str(node)
         print(header + ("" if root else (elbow if last else tee)) + output)
