@@ -1,4 +1,4 @@
-from probabilit.modeling import Distribution, Constant, Log
+from probabilit.modeling import Constant, Distribution, Log
 
 
 def test_garbage_collector():
@@ -45,14 +45,13 @@ def test_garbage_collector_large_graph():
     sampling_nodes = []
 
     result = 0
-    for year in range(99):
+    for _year in range(99):
         addition = Distribution("norm", loc=100, scale=10)
         interest_rate = Distribution("norm", loc=1.05, scale=0.05)
         result = result * interest_rate + addition
 
         # Store nodes to check them later
-        sampling_nodes.append(addition)
-        sampling_nodes.append(interest_rate)
+        sampling_nodes.extend((addition, interest_rate))
 
     result.sample(99, random_state=42, gc_strategy=[])
 

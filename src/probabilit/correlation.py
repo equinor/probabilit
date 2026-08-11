@@ -30,14 +30,15 @@ Induce correlations
 0.279652...
 """
 
+import abc
+import contextlib
+import dataclasses
+import itertools
+import os
+import pathlib
+
 import numpy as np
 import scipy as sp
-import abc
-import dataclasses
-
-import contextlib
-import os
-import itertools
 
 # CVXPY prints error messages about incompatible ortools version during import.
 # Since we use the SCS solver and not GLOP/PDLP (which need ortools), these errors
@@ -45,7 +46,7 @@ import itertools
 # stdout/stderr during import.
 # https://github.com/cvxpy/cvxpy/issues/2470
 with (
-    open(os.devnull, "w") as devnull,
+    pathlib.Path(os.devnull).open("w", encoding="utf-8") as devnull,
     contextlib.redirect_stdout(devnull),
     contextlib.redirect_stderr(devnull),
 ):
@@ -135,7 +136,11 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     # by nudging the solution slightly more, so the minimum eigenvalue is > 0.
     objective = cp.norm(cp.multiply(H, X - G), "fro")
     eps_identity = (eps / G.shape[0]) * 10
-    constraints = [cp.diag(X) == 1.0, (X - eps_identity * np.eye(G.shape[0])) >> 0]
+    constraints = [
+        # cvxpy overloads `==` to build a constraint, this is not a float comparison
+        cp.diag(X) == 1.0,
+        (X - eps_identity * np.eye(G.shape[0])) >> 0,
+    ]
 
     # For solver options, see:
     # https://www.cvxpy.org/tutorial/solvers/index.html#setting-solver-options
@@ -159,9 +164,9 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
 def _is_positive_definite(X):
     try:
         np.linalg.cholesky(X)
-        return True
     except np.linalg.LinAlgError:
         return False
+    return True
 
 
 class Correlator(abc.ABC):
@@ -208,6 +213,10 @@ class Correlator(abc.ABC):
 
         return N, K
 
+    @abc.abstractmethod
+    def __call__(self, X) -> np.ndarray:
+        """Transform an input matrix X of shape (observations, variables)."""
+
 
 @dataclasses.dataclass(init=False, repr=True, eq=False)
 class Cholesky(Correlator):
@@ -248,7 +257,7 @@ class Cholesky(Correlator):
         super().set_target(correlation_matrix)
         return self
 
-    def __call__(self, X):
+    def __call__(self, X) -> np.ndarray:
         """Transform an input matrix X.
 
         Parameters
@@ -266,7 +275,6 @@ class Cholesky(Correlator):
 
         """
         self._validate_X(X)
-        N, K = X.shape
 
         # Remove existing mean and std from marginal distributions
         mean = np.mean(X, axis=0)
@@ -372,7 +380,7 @@ class ImanConover(Correlator):
         super().set_target(correlation_matrix)
         return self
 
-    def __call__(self, X):
+    def __call__(self, X) -> np.ndarray:
         """Transform an input matrix X.
 
         The output will have the same marginal distributions, but with
@@ -453,13 +461,13 @@ class SwapIndexGenerator:
     (array([7, 0, 4, 2]), array([3, 5, 1, 8]))
     """
 
-    def __init__(self, rng, n: int):
+    def __init__(self, rng, n: int) -> None:
         assert n >= 2
         self.rng = rng
         self.indices = np.arange(n)
         self.permutation = self.rng.permutation(self.indices)
 
-    def __call__(self, size: int):
+    def __call__(self, size: int) -> tuple[np.ndarray, np.ndarray]:
         assert size >= 1
 
         # Get 2 * size elements
@@ -488,7 +496,7 @@ class Permutation(Correlator):
         correlation_type="pearson",
         random_state=None,
         verbose=False,
-    ):
+    ) -> None:
         """Create a Permutation instance, which induces correlations
         between variables in X by randomly shuffling rows within each column.
 
@@ -550,7 +558,8 @@ class Permutation(Correlator):
         0.4846...
         >>> ic_trans = ImanConover().set_target(correlation_matrix)
         >>> X_ic = ic_trans(X)
-        >>> perm_trans._error(correlation_matrix, np.corrcoef(X_ic, rowvar=False)) # Error after Iman-Conover
+        >>> # Error after Iman-Conover
+        >>> perm_trans._error(correlation_matrix, np.corrcoef(X_ic, rowvar=False))
         0.0071...
         >>> X_ic_pc = perm_trans(X_ic)
         Running permutation correlator for 250 iterations.
@@ -622,7 +631,7 @@ class Permutation(Correlator):
         C = np.log2(n) + 1
         return int(np.ceil(C ** (1 - (2 * i / n))))
 
-    def __call__(self, X):
+    def __call__(self, X) -> np.ndarray:
         """Cycle through through columns (variables), and for each
         column it swaps random rows (observations). If the result
         leads to a smaller error (correlation closer to target), then it is
@@ -649,7 +658,7 @@ class Permutation(Correlator):
 
         if self.verbose:
             print(
-                f"Running permutation correlator for {self.iters if self.iters else 'inf'} iterations."
+                f"Running permutation correlator for {self.iters or 'inf'} iterations."
             )
 
         def product(iterations_gen, variables_gen):
@@ -673,12 +682,11 @@ class Permutation(Correlator):
         # This parametrizes the algorithm so iterations is less sensitive to k.
         for iteration, k in loop_gen:
             print_iter = iteration % max(self.iters // 10, 1) if self.iters else 1000
-            num_swaps = self.subiters(
-                n=self.iters if self.iters else 10_000, i=iteration
-            )
+            num_swaps = self.subiters(n=self.iters or 10_000, i=iteration)
             if self.verbose and print_iter == 0 and k == 0:
                 print(
-                    f" Iter {iteration:>6}  Error: {current_error:.6f} Swaps: {num_swaps:>2}"
+                    f" Iter {iteration:>6}  "
+                    f"Error: {current_error:.6f} Swaps: {num_swaps:>2}"
                 )
 
             # Create two disjoint sets of swaps, e.g. [1, 3] and [4, 8]
@@ -702,7 +710,8 @@ class Permutation(Correlator):
                 if current_error < self.tol:
                     if self.verbose:
                         print(
-                            f""" Terminating at iteration {iteration} due to tolerance. Error: {current_error:.6f}"""
+                            f" Terminating at iteration {iteration} due to"
+                            f" tolerance. Error: {current_error:.6f}"
                         )
                     return corr_mat.X
 
@@ -752,7 +761,7 @@ def decorrelate(X, remove_variance=True):
 
     L = np.linalg.cholesky(cov)  # L @ L.T = cov
     if not remove_variance:
-        L = L / np.sqrt(var)
+        L /= np.sqrt(var)
 
     # Computes X = (X - mean) @ inv(L).T
     X = sp.linalg.solve_triangular(L, (X - mean).T, lower=True).T
@@ -823,7 +832,7 @@ class CorrelationMatrix:
            [ 0.325, -0.6  , -0.151,  1.   ]])
     """
 
-    def __init__(self, X, correlation_type="pearson", check=True):
+    def __init__(self, X, correlation_type="pearson", check=True) -> None:
         valid_corrs = ("pearson", "spearman")
         assert correlation_type in valid_corrs
         assert X.ndim == 2
@@ -858,10 +867,10 @@ class CorrelationMatrix:
             :, None
         ]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.corr_mat)
 
-    def __getitem__(self, *args, **kwargs):
+    def __getitem__(self, *args, **kwargs) -> np.ndarray | np.floating:
         return self.corr_mat.__getitem__(*args, **kwargs)
 
     def commit(self, col, i, j):
@@ -914,14 +923,16 @@ class CorrelationMatrix:
 
     def delta_column(self, col, i, j):
         """Returns the change in the column `col` in the correlation matrix
-        when rows i and j are swapped. To save a change, use `.commit()`."""
+        when rows i and j are swapped. To save a change, use `.commit()`.
+        """
 
         diff = self._delta_numerator(col, i, j)
         return diff / (self.m * self.denominator * self.denominator[col])
 
     def update_column(self, col, i, j):
         """Returns the new value of column `col` in the correlation matrix
-        when rows i and j are swapped. To save a change, use `.commit()`."""
+        when rows i and j are swapped. To save a change, use `.commit()`.
+        """
 
         delta = self.delta_column(col, i, j)
         return self.corr_mat[:, col] + delta
@@ -953,7 +964,7 @@ class Composite(Correlator):
     array([-0.23,  1.  , -0.25, -0.27, -0.88, -0.24])
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         self.iman_conover_correlator = ImanConover()
         self.permutation_correlator = Permutation(*args, **kwargs)
 
@@ -962,7 +973,7 @@ class Composite(Correlator):
         self.permutation_correlator.set_target(correlation_matrix, weights=weights)
         return self
 
-    def __call__(self, X):
+    def __call__(self, X) -> np.ndarray:
         try:
             # First run ImanConover to get a good starting point
             X_ic = self.iman_conover_correlator(X)
@@ -977,8 +988,8 @@ class Composite(Correlator):
 
 
 if __name__ == "__main__":
-    import pytest
     import matplotlib.pyplot as plt
+    import pytest
 
     pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
 

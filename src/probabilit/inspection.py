@@ -5,11 +5,13 @@ Inspection
 Inspection of results, plotting, tables, exporting, etc.
 """
 
-import seaborn
-import pandas as pd
-from probabilit.modeling import NoOp, Distribution, Transform
-import numpy as np
 from numbers import Number
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from probabilit.modeling import Distribution, NoOp, Transform
 
 
 def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
@@ -59,7 +61,7 @@ def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
     df = pd.DataFrame(
         {f"var_{i}": var.samples_ for (i, var) in enumerate(variables, 1)}
     )
-    return seaborn.pairplot(df, **kwargs)
+    return sns.pairplot(df, **kwargs)
 
 
 def treeprint(node):

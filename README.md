@@ -22,7 +22,7 @@ What is the probability that a man is taller than a woman?
 >>> from probabilit.modeling import Distribution
 >>> male_height = Distribution("norm", loc=176, scale=7.1)
 >>> female_height = Distribution("norm", loc=162.5, scale=7.1)
->>> statistic = (male_height > female_height)
+>>> statistic = male_height > female_height
 >>> samples = statistic.sample(999, random_state=0)
 >>> float(samples.mean())
 0.9039...
@@ -57,7 +57,7 @@ What is the distribution of the number of birds that survive per nest?
 >>> eggs_per_nest = Distribution("poisson", mu=3)
 >>> survivial_prob = 0.4
 >>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
->>> survived.sample(9, random_state=0) # Sample a few values only
+>>> survived.sample(9, random_state=0)  # Sample a few values only
 array([2., 1., 1., 2., 2., 2., 2., 0., 0.])
 
 ```
@@ -90,10 +90,14 @@ Below a user has specified some correlations, but the resulting correlation matr
 ```pycon
 >>> import numpy as np
 >>> from probabilit.correlation import nearest_correlation_matrix
->>> X = np.array([[1, 0.9, 0],
-...               [0.9, 1, 0.8],
-...               [0, 0.8, 1]])
->>> np.linalg.eigvalsh(X) # Not a valid correlation matrix
+>>> X = np.array(
+...     [
+...         [1, 0.9, 0],
+...         [0.9, 1, 0.8],
+...         [0, 0.8, 1],
+...     ],
+... )
+>>> np.linalg.eigvalsh(X)  # Not a valid correlation matrix
 array([-0.20415946,  1.        ,  2.20415946])
 >>> nearest_correlation_matrix(X)
 array([[1.        , 0.77523696, 0.07905637],
@@ -113,8 +117,9 @@ There's no guarantee that we're able to achieve the desired correlation structur
 >>> from probabilit.correlation import ImanConover
 >>> sampler = sp.stats.qmc.LatinHypercube(d=2, seed=42, scramble=True)
 >>> samples = sampler.random(n=100)
->>> X = np.vstack((sp.stats.triang(0.5).ppf(samples[:, 0]),
-...                sp.stats.gamma.ppf(samples[:, 1], a=1))).T
+>>> X = np.vstack(
+...     (sp.stats.triang(0.5).ppf(samples[:, 0]), sp.stats.gamma.ppf(samples[:, 1], a=1))
+... ).T
 
 ```
 

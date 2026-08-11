@@ -1,13 +1,14 @@
+import numpy as np
+import pytest
+from scipy.stats import beta, triang
+
 from probabilit.distributions import (
-    _fit_triangular_distribution,
-    _pert_to_beta,
-    _fit_pert_distribution,
     Lognormal,
     Uniform,
+    _fit_pert_distribution,
+    _fit_triangular_distribution,
+    _pert_to_beta,
 )
-import pytest
-from scipy.stats import triang, beta
-import numpy as np
 
 
 class TestTriangular:
@@ -69,7 +70,7 @@ class TestTriangular:
 
 class TestLognormal:
     @pytest.mark.parametrize(
-        "mean,std",
+        ("mean", "std"),
         [
             (1.0, 0.5),
             (10.0, 1.0),
@@ -85,7 +86,7 @@ class TestLognormal:
         np.testing.assert_allclose(np.std(samples), std, rtol=0.05)
 
     @pytest.mark.parametrize(
-        "mu,sigma",
+        ("mu", "sigma"),
         [
             (0.0, 0.5),
             (1.0, 1.0),
@@ -107,15 +108,15 @@ class TestLognormal:
 
 
 class TestPERT:
-    @pytest.mark.parametrize("min", [-(10**6), 0, 2, 4])
-    @pytest.mark.parametrize("max", [10, 12, 14, 10**6])
+    @pytest.mark.parametrize("minimum", [-(10**6), 0, 2, 4])
+    @pytest.mark.parametrize("maximum", [10, 12, 14, 10**6])
     @pytest.mark.parametrize("low_perc", [0.01, 0.1, 0.2])
     @pytest.mark.parametrize("high_perc", [0.99, 0.9, 0.7])
-    def test_pert_roundtrips(self, min, max, low_perc, high_perc):
+    def test_pert_roundtrips(self, minimum, maximum, low_perc, high_perc):
         mode = 5
         gamma = 4
         a, b, loc, scale = _pert_to_beta(
-            minimum=min, mode=mode, maximum=max, gamma=gamma
+            minimum=minimum, mode=mode, maximum=maximum, gamma=gamma
         )
 
         distr = beta(a, b, loc, scale)
@@ -159,7 +160,7 @@ class TestPERT:
 
 class TestUniform:
     @pytest.mark.parametrize(
-        "min_val,max_val", [(-5, 5), (0, 15), (10, 100), (-10, -2), (1, 2)]
+        ("min_val", "max_val"), [(-5, 5), (0, 15), (10, 100), (-10, -2), (1, 2)]
     )
     def test_uniform_properties(self, min_val, max_val):
         rng = np.random.default_rng(42)

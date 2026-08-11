@@ -31,3 +31,60 @@ dev = [
 
 [project.urls]
 homepage = "https://github.com/equinor/probabilit"
+
+[tool.ruff]
+src = ["src"]
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "A",      # flake8-builtins
+    "ANN204", # flake8-annotations: missing-return-type-special-method
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "D200",   # pydocstyle: unnecessary-multiline-docstring
+    "D209",   # pydocstyle: new-line-after-last-paragraph
+    "DTZ",    # flake8-datetimez
+    "E",      # pycodestyle errors
+    "EXE",    # flake8-executable
+    "F",      # Pyflakes
+    "FA",     # flake8-future-annotations
+    "FLY",    # flynt
+    "FURB",   # refurb
+    "G",      # flake8-logging-format
+    "I",      # isort
+    "ICN",    # flake8-import-conventions
+    "ISC",    # flake8-implicit-str-concat
+    "LOG",    # flake8-logging
+    "NPY",    # NumPy-specific rules
+    "PD",     # pandas-vet
+    "PERF",   # Perflint
+    "PIE",    # flake8-pie
+    "PL",     # Pylint
+    "PT",     # flake8-pytest-style
+    "PTH101", # flake8-use-pathlib: os-chmod
+    "PTH109", # flake8-use-pathlib: os-getcwd
+    "PTH110", # flake8-use-pathlib: os-path-exists
+    "PTH113", # flake8-use-pathlib: os-path-isfile
+    "PTH118", # flake8-use-pathlib: os-path-join
+    "PTH123", # flake8-use-pathlib: builtin-open
+    "Q",      # flake8-quotes
+    "RET",    # flake8-return
+    "RSE",    # flake8-raise
+    "RUF",    # Ruff-specific rules
+    "SIM",    # flake8-simplify
+    "SLOT",   # flake8-slots
+    "TID",    # flake8-tidy-imports
+    "TRY203", # tryceratops: useless-try-except
+    "TRY300", # tryceratops: try-consider-else
+    "UP",     # pyupgrade
+    "W",      # pycodestyle warnings
+    "YTT",    # flake8-2020
+]
+ignore = [
+    "PLR2004", # Pylint: magic-value-comparison; numerical constants are clearer inline
+]
+
+[tool.ruff.lint.pylint]
+# PLR0913 (too-many-arguments): distribution APIs require up to six arguments.
+max-args = 6

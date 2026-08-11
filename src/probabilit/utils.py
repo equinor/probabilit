@@ -1,4 +1,5 @@
 import itertools
+
 import numpy as np
 import scipy as sp
 
@@ -83,11 +84,13 @@ def zip_args(args, kwargs):
     (2, None) {'a': 6, 'b': 9}
     (3, None) {'a': 7, 'b': 9}
     """
-    zipped_args = zip(*args) if args else itertools.repeat(args)
-    zipped_kwargs = zip(*kwargs.values()) if kwargs else itertools.repeat(kwargs)
+    zipped_args = zip(*args, strict=False) if args else itertools.repeat(args)
+    zipped_kwargs = (
+        zip(*kwargs.values(), strict=False) if kwargs else itertools.repeat(kwargs)
+    )
 
-    for args_i, kwargs_i in zip(zipped_args, zipped_kwargs):
-        yield args_i, dict(zip(kwargs.keys(), kwargs_i))
+    for args_i, kwargs_i in zip(zipped_args, zipped_kwargs, strict=False):
+        yield args_i, dict(zip(kwargs.keys(), kwargs_i, strict=True))
 
 
 if __name__ == "__main__":
