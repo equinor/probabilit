@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+
 from probabilit.correlation import nearest_correlation_matrix
 
 
@@ -18,8 +19,8 @@ class TestNearestCorrelationMatrix:
         np.linalg.cholesky(matrix)
 
         # Mess it up
-        matrix = matrix + rng.normal(size=matrix.shape, scale=0.1)
-        matrix = matrix - np.identity(variables) * np.mean(np.diag(matrix))
+        matrix += rng.normal(size=matrix.shape, scale=0.1)
+        matrix -= np.identity(variables) * np.mean(np.diag(matrix))
 
         # Now the cholesky decomposition should fail
         with pytest.raises(np.linalg.LinAlgError):

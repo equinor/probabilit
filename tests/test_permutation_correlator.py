@@ -1,11 +1,12 @@
-from probabilit.correlation import (
-    Permutation,
-    CorrelationMatrix,
-    SwapIndexGenerator,
-)
 import numpy as np
 import pytest
 import scipy as sp
+
+from probabilit.correlation import (
+    CorrelationMatrix,
+    Permutation,
+    SwapIndexGenerator,
+)
 
 
 class TestSwapIndexGenerator:
@@ -28,10 +29,9 @@ class TestCorrelationMatrix:
         def corr(X, correlation_type):
             if correlation_type == "pearson":
                 return np.corrcoef(X, rowvar=False)
-            elif correlation_type == "spearman":
+            if correlation_type == "spearman":
                 return sp.stats.spearmanr(X).statistic
-            else:
-                raise ValueError("Invalid correlation type")
+            raise ValueError("Invalid correlation type")
 
         rng = np.random.default_rng(seed)
         X = rng.normal(size=(9, 4))
@@ -105,7 +105,7 @@ class TestCorrelationMatrix:
         # Test a chain of swaps
         correlation_matrix = CorrelationMatrix(X, correlation_type=correlation_type)
         a, b = [1, 3, 2], [6, 4, 5]
-        for i, j in zip(a, b):
+        for i, j in zip(a, b, strict=True):
             correlation_matrix.commit(col=2, i=i, j=j)
         X_singles = np.copy(correlation_matrix.X)
 

@@ -105,7 +105,7 @@ def test_input_validation(rng):
         ]
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"does not match shape of correlation matrix"):
         ImanConover().set_target(C)(X)
 
 
@@ -206,7 +206,9 @@ class TestImanConover:
         desired_corr = np.identity(2)
 
         transform = ImanConover().set_target(desired_corr)
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError, match=r"Rank data correlation not positive definite"
+        ):
             transform(X)
 
 

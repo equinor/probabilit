@@ -41,10 +41,12 @@ the PERT distribution, then convert it to a Beta parametrization for scipy:
 (51.32..., 248.67...)
 """
 
-import numpy as np
 import warnings
+
+import numpy as np
 import scipy as sp
-from probabilit.modeling import Distribution, Log, Exp, Sign
+
+from probabilit.modeling import Distribution, Exp, Log, Sign
 
 
 def Uniform(minimum=0, maximum=1):
@@ -73,7 +75,7 @@ def TruncatedNormal(mean, std, *, low=-np.inf, high=np.inf):
 
 
 class Lognormal(Distribution):
-    def __init__(self, mean, std):
+    def __init__(self, mean, std) -> None:
         """
         A Lognormal distribution with mean and std corresponding directly
         to the expected value and standard deviation of the resulting lognormal.
@@ -256,7 +258,8 @@ def _fit_triangular_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.
         # Parameterize as differences relative to the mode, so we obey
         # the constraint: minimum < mode < maximum
         under_mode, over_mode = parameters
-        assert under_mode > 0 and over_mode > 0
+        assert under_mode > 0
+        assert over_mode > 0
 
         # Convert to minimum and maximum
         minimum, maximum = mode - under_mode, mode + over_mode
@@ -289,7 +292,9 @@ def _fit_triangular_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.
     )
 
     if result.fun > 1e-6:
-        warnings.warn(f"Optimization of Triangular params has {result.fun=}")
+        warnings.warn(
+            f"Optimization of Triangular params has {result.fun=}", stacklevel=3
+        )
 
     # Extract the minimum and maximum of the distribution
     under_mode, over_mode = result.x
@@ -302,7 +307,7 @@ def _fit_triangular_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.
     loc = minimum
     scale = maximum - minimum
     c = (mode - minimum) / scale
-    return float((loc)), float((scale)), float(c)
+    return float(loc), float(scale), float(c)
 
 
 def _pert_to_beta(minimum, mode, maximum, *, gamma=4.0):
@@ -407,7 +412,7 @@ def _fit_pert_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.90, ga
     )
 
     if result.fun > 1e-6:
-        warnings.warn(f"Optimization of PERT params has {result.fun=}")
+        warnings.warn(f"Optimization of PERT params has {result.fun=}", stacklevel=3)
 
     # Extract the minimum and maximum of the distribution
     under_mode, over_mode = result.x

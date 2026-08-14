@@ -15,7 +15,7 @@ class GarbageCollector:
         empty list means all nodes except the sink will be garbage collected.
     """
 
-    def __init__(self, strategy=None):
+    def __init__(self, strategy=None) -> None:
         if not (strategy is None or isinstance(strategy, Collection)):
             raise TypeError(f"`strategy` must be None or a collection, got: {strategy}")
 

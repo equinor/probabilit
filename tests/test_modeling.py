@@ -1,26 +1,30 @@
+import math
+
+import numpy as np
+import pytest
+import scipy as sp
+
+from probabilit.distributions import Triangular, TruncatedNormal
 from probabilit.modeling import (
-    EmpiricalDistribution,
-    Constant,
-    Log,
-    Exp,
-    Distribution,
-    Floor,
-    Equal,
     All,
-    Min,
+    Constant,
+    Distribution,
+    EmpiricalDistribution,
+    Equal,
+    Exp,
+    Floor,
+    Log,
     Max,
+    Min,
     NoOp,
 )
-from probabilit.distributions import Triangular, TruncatedNormal
-import numpy as np
-import scipy as sp
-import pytest
 
 
 class TestModelingExamples:
     def test_die_problem(self):
         """If we throw 2 die, what is the probability that each one ends up
-        with the same number?"""
+        with the same number?
+        """
 
         die1 = Floor(1 + Distribution("uniform") * 6)
         die2 = Floor(1 + Distribution("uniform") * 6)
@@ -80,12 +84,13 @@ class TestModelingExamples:
 
         From: https://curvo.eu/backtest/en/market-index/sp-500?currency=eur
         In the last 33 years, the S&P 500 index (in EUR) had a compound annual
-        growth rate of 10.83%, a standard deviation of 15.32%, and a Sharpe ratio of 0.66.
+        growth rate of 10.83%, a standard deviation of 15.32%,
+        and a Sharpe ratio of 0.66.
         """
 
         saved_per_year = 1200
         returns = 0
-        for year in range(20):
+        for _year in range(20):
             interest = Distribution("norm", loc=1.11, scale=0.15)
             returns = returns * interest + saved_per_year
         samples = returns.sample(999, random_state=42)
@@ -95,26 +100,30 @@ class TestModelingExamples:
         np.testing.assert_allclose(samples.std(), 34507.634828, rtol=1e-4)
 
     def test_total_person_hours(self):
-        """Based on Example 19.2 from Risk Analysis: A Quantitative Guide, 3rd Edition by David Vose.
+        """Based on Example 19.2 from Risk Analysis: A Quantitative Guide, 3rd
+        Edition by David Vose.
 
-        Estimate the number of person-hours requires to rivet 562 plates of a ship's hull.
-        The quickest anyone has ever riveted a single plate is 3h 45min, while the worst time recorded is 5h 30min.
+        Estimate the number of person-hours requires to rivet 562 plates of a
+        ship's hull. The quickest anyone has ever riveted a single plate is 3h
+        45min, while the worst time recorded is 5h 30min.
         Most likely value is estimated to be 4h 15min.
         What is the total person-hours?
 
         Naively, we could model the problem as:
         total_person_hours = 562 * Triangular(3.75, 4.25, 5.5),
-        but note that the triangular distribution here models the uncertainty of an individual plate,
-        but we are using it as if it were the distribution of the average time for 562 plates.
+        but note that the triangular distribution here models the uncertainty
+        of an individual plate, but we are using it as if it were the
+        distribution of the average time for 562 plates.
 
-        A straight forward approach that gives the correct answer is to add 562 triangular distributions.
+        A straight forward approach that gives the correct answer is to add 562
+        triangular distributions.
         """
 
         rng = np.random.default_rng(42)
         num_rivets = 562
         total_person_hours = 0
 
-        for i in range(num_rivets):
+        for _i in range(num_rivets):
             total_person_hours += Triangular(
                 low=3.75, mode=4.25, high=5.5, low_perc=0, high_perc=1.0
             )
@@ -124,9 +133,12 @@ class TestModelingExamples:
             num_samples, random_state=rng
         )
 
-        # The mean and standard deviation of a Triangular(3.75, 4.25, 5.5) are 4.5 and 0.368,
+        # The mean and standard deviation of a
+        # Triangular(3.75, 4.25, 5.5) are 4.5 and 0.368,
         # so by the Central Limit Theoreom we have that
-        # total_person_hours = Normal(4.5 * 562, 0.368 * sqrt(562)) = Normal(2529, 8.724)
+        # total_person_hours
+        # = Normal(4.5 * 562, 0.368 * sqrt(562))
+        # = Normal(2529, 8.724)
         expected_mean = 4.5 * num_rivets
         expected_std = 0.368 * np.sqrt(num_rivets)
 
@@ -202,7 +214,8 @@ class TestModelingExamples:
                 )
             else:  # Fault is closed
                 assert 1950 <= owc2_samples[i] <= 2000, (
-                    f"Sample {i}: When fault is closed, Seg2 OWC ({owc2_samples[i]:.2f}) "
+                    f"Sample {i}: "
+                    f"When fault is closed, Seg2 OWC ({owc2_samples[i]:.2f}) "
                     f"should be in independent range [1950-2000m]"
                 )
 
@@ -220,7 +233,8 @@ class TestModelingExamples:
 
         The main uncertainty is the speed and the coefficient of friction.
         For fun we can also account for some variation in the gravitational
-        constant g, since it depends on altitude and where on earth we are."""
+        constant g, since it depends on altitude and where on earth we are.
+        """
 
         # The kinetic energy is E = 1/2 m v^2
         # The breaking for has to stop this energy
@@ -268,7 +282,8 @@ def test_copying():
     assert a2 is not a
 
     # However, the IDs match and they are equal
-    assert a2 == a and (a2._id == a._id)
+    assert a2 == a
+    assert a2._id == a._id
 
     # The same holds for parents - they are copied
     assert a2.kwargs["loc"] is not a.kwargs["loc"]
@@ -361,7 +376,7 @@ def test_that_distribution_params_with_transforms():
     samples2 = Distribution("norm", loc=loc).sample(99, random_state=0)
 
     # A more complex expression: loc = 0 + sqrt(9) - Log(2) = 0 + 3 - 1 = 2
-    loc = Constant(0) + (Constant(9) ** 0.5) - Log(2.718281828459045)
+    loc = Constant(0) + (Constant(9) ** 0.5) - Log(math.e)
     samples3 = Distribution("norm", loc=loc).sample(99, random_state=0)
 
     np.testing.assert_allclose(samples1, samples2)
@@ -377,7 +392,8 @@ def test_correlations():
     d = Distribution("norm", loc=0, scale=1)
     expression = a + b + c + d
 
-    # This is not a valid correlation matrix (not pos.def) - but probabilit will fix that
+    # This is not a valid correlation matrix (not pos.def)
+    # - but probabilit will fix that
     corr_mat = np.array([[1.0, 0.8, 0.5], [0.8, 1.0, 0.8], [0.5, 0.8, 1.0]])
     expression.correlate(a, b, c, corr_mat=corr_mat)
 
@@ -430,7 +446,7 @@ def test_error_when_overlapping_correlations():
 
     # Sampling should raise an error due to overlapping
     # correlation groups
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"Correlations specified more than once"):
         expression.sample(size=5, random_state=42, method="lhs")
 
 
@@ -528,7 +544,8 @@ def test_all_correlations_at_unity():
 def test_off_diagonal_correlations():
     """Create two groups of variables, then that each group attains desired
     correlations. Then check that cross-correlations between the two
-    groups are close to zero."""
+    groups are close to zero.
+    """
 
     # First group
     a = Distribution("norm", loc=0, scale=1)
