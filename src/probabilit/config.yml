@@ -1,0 +1,47 @@
+metadata:
+  name: "Name for a test"
+  description: "Description for a test"
+  samples: 999
+  sampling_method: "lhs"
+  # correlation_method: ""
+  seed: 42
+
+variables:
+  Steel_Cost:
+    type: "norm"
+    loc: 800000
+    scale: 1200000
+
+  Maintenance_Cost:
+    type: "uniform"
+    loc: 0
+    scale: 1
+      
+  Height:
+    type: "norm"
+    loc: 180
+    scale: 10
+      
+  Children:
+    type: "EmpiricalDistribution"
+    data: [1, 3, 2, 4, 5, 2, 3, 4]
+    method: "closest_observation"
+    
+  Adult:
+    type: "DiscreteDistribution"
+    values: ["no", "yes"]
+    probabilities: [0.4, 0.6]
+
+correlations:
+  - 0.2: [Steel_Cost, Maintenance_Cost]
+  - 0.5: [Height, Maintenance_Cost]
+  
+derived:
+  Adult: # Derived FROM this variable
+    TypicalAge: # The derived parameter
+      - "no": 16 # mapping: From -> To
+      - "yes": 32
+plot:
+  - [Steel_Cost, Maintenance_Cost]
+  - Steel_Cost
+  - [Steel_Cost, Maintenance_Cost, Height, Children]
