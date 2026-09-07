@@ -6,4 +6,29 @@ updates:
     cooldown:
       default-days: 7
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    allow:
+      - dependency-type: "all"
+    versioning-strategy: "lockfile-only"
+    groups:
+      all-deps:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      all-commit-hooks:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
