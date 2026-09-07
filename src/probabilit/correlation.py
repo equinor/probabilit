@@ -452,7 +452,10 @@ class ImanConover(Correlator):
         for k in range(K):
             # If row j is the k'th largest in `correlated_scores`, then
             # we map the k'th largest entry in X to row j.
-            rank_indices = sp.stats.rankdata(correlated_scores[:, k]).astype(int) - 1
+            rank_indices = (
+                sp.stats.rankdata(correlated_scores[:, k], method="ordinal").astype(int)
+                - 1
+            )
             result[:, k] = np.sort(X[:, k])[rank_indices]
 
         return result
