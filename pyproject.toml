@@ -21,11 +21,11 @@ dependencies = [
 "seaborn",
 "pandas",
 "cvxpy",
-]  
+]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
-"ruff",
+"pre-commit",
 "pytest",
 ]
 

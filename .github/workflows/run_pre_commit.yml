@@ -1,4 +1,4 @@
-name: Python package
+name: Run pre-commit
 
 permissions:
   contents: read
@@ -13,16 +13,16 @@ env:
   UV_LOCKED: true
 
 jobs:
-  build:
-
+  check-style:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14"]
+        python-version: ['3.14']
 
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
@@ -35,14 +35,11 @@ jobs:
         prune-cache: false
         python-version: ${{ matrix.python-version }}
 
-    - name: Install package
+    - name: Install probabilit
       run: |
         uv sync --group dev
 
-    - name: Run pytest
+    - name: Run pre-commit
+      if: ${{ always() }}
       run: |
-        uv run pytest . --doctest-modules -v
-
-    - name: Run doctests in README
-      run: |
-        uv run python -m doctest README.md -o ELLIPSIS
+        SKIP=no-commit-to-branch uv run pre-commit run --all-files --show-diff-on-failure
