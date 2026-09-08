@@ -1450,39 +1450,3 @@ def MultivariateDistribution(distr, *args, **kwargs):
     # Get dimensionality by sampling once
     d = len(distr._sample(q=[0.5]).squeeze())
     yield from (MarginalDistribution(distr, d=i) for i in range(d))
-
-
-# ========================================================
-if __name__ == "__main__":
-    import pytest
-
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(42)
-    a = Distribution("norm", loc=0, scale=1)
-    b = Distribution("norm", loc=0, scale=1)
-    c = Distribution("norm", loc=0, scale=1)
-
-    expression = a + b
-    corr_mat = np.array([[1.0, 0.8], [0.8, 1.0]])
-    expression.correlate(a, b, corr_mat=corr_mat)
-
-    expression += c
-    expression.correlate(b, c, corr_mat=corr_mat)
-
-    import matplotlib.pyplot as plt
-
-    expression.sample(999, random_state=rng)
-
-    plt.figure(figsize=(3, 2))
-    plt.scatter(a.samples_, b.samples_, s=2)
-    plt.show()
-
-    d1, d2, d3 = MultivariateDistribution("dirichlet", alpha=[1, 2, 3])
-
-    # =========================
-
-    cost = EmpiricalDistribution(data=[1, 2, 3, 3, 3, 3])
-    norm = Distribution("norm", loc=cost, scale=1)
-    (norm**2).sample(99, random_state=42)

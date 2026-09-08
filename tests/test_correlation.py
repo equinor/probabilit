@@ -77,9 +77,3 @@ class TestNearestCorrelationMatrix:
 
         # Matlab output has 4 digits, so atol is set to 1e-4 here
         assert np.allclose(Y, matlab_Y, atol=1e-4)
-
-
-if __name__ == "__main__":
-    import pytest
-
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "-l"])

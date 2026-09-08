@@ -580,9 +580,3 @@ def test_off_diagonal_correlations():
     # Verify that cross diagonal terms (off diagonals in block) are close to 0
     obs_corr = np.corrcoef(np.array([var.samples_ for var in [a, b, c, d, e, f]]))
     assert rmse(obs_corr - sp.linalg.block_diag(corr1, corr2)) <= 0.05
-
-
-if __name__ == "__main__":
-    import pytest
-
-    pytest.main(args=[__file__, "-v", "--capture=sys"])

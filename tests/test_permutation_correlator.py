@@ -183,7 +183,3 @@ class TestPermutation:
         assert transform._error(cor_X_trans, desired_corr) < transform._error(
             cor_X, desired_corr
         )
-
-
-if __name__ == "__main__":
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "-l"])

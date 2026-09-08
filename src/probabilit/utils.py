@@ -91,9 +91,3 @@ def zip_args(args, kwargs):
 
     for args_i, kwargs_i in zip(zipped_args, zipped_kwargs, strict=False):
         yield args_i, dict(zip(kwargs.keys(), kwargs_i, strict=True))
-
-
-if __name__ == "__main__":
-    import pytest
-
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])

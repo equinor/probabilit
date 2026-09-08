@@ -421,9 +421,3 @@ def _fit_pert_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.90, ga
     # We scale to (-1, 1) in the beginning, and now we must scale back
     minimum, maximum = inv_scaler(minimum), inv_scaler(maximum)
     return float(minimum), float(maximum)
-
-
-if __name__ == "__main__":
-    import pytest
-
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])
