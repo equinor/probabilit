@@ -146,19 +146,22 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     # https://www.cvxpy.org/tutorial/solvers/index.html#setting-solver-options
     problem = cp.Problem(cp.Minimize(objective), constraints)
     problem.solve(solver="SCS", verbose=verbose, eps=eps)
-    X = X.value.copy()  # Copy over solution
+    solution = X.value
+    if solution is None:
+        raise CorrelatorError("Correlation matrix solver did not produce a solution.")
+    result = solution.copy()
 
     # We might get small eigenvalues due to numerics. Attempt to fix this by
     # recursively calling the solver with smaller values of epsilon. This is
     # an extra fail-safe that is very rarely triggered on actual data.
-    is_symmetric = np.allclose(X, X.T)
-    is_PD = np.linalg.eig(X)[0].min() > 0
+    is_symmetric = np.allclose(result, result.T)
+    is_PD = np.linalg.eig(result)[0].min() > 0
     if not (is_symmetric and is_PD) and (eps > 1e-14):
         if verbose:
             print(f"Recursively calling solver with eps := {eps} / 10")
         return nearest_correlation_matrix(G, weights=H, eps=eps / 10, verbose=verbose)
 
-    return X
+    return result
 
 
 def _is_positive_definite(X):

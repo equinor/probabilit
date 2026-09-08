@@ -1,10 +1,17 @@
 import numpy as np
 import pytest
 
-from probabilit.correlation import nearest_correlation_matrix
+from probabilit.correlation import CorrelatorError, nearest_correlation_matrix
 
 
 class TestNearestCorrelationMatrix:
+    def test_missing_solver_result(self, monkeypatch):
+        monkeypatch.setattr("cvxpy.Problem.solve", lambda _self, **_kwargs: None)
+        matrix = np.array([[1.0, 2.0], [2.0, 1.0]])
+
+        with pytest.raises(CorrelatorError, match="did not produce a solution"):
+            nearest_correlation_matrix(matrix)
+
     @pytest.mark.parametrize("variables", range(2, 100, 10))
     def test_nearest_correlation_matrix(self, variables):
         """Test that we can cholesky decompose the solution."""
