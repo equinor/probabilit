@@ -207,7 +207,7 @@ class Correlator(abc.ABC):
 
         if self.C.shape[0] != K:
             msg = f"Shape of `X` ({X.shape}) does not match shape of "
-            msg += f"correlation matrix ({self.P.shape})"
+            msg += f"correlation matrix ({self.C.shape})"
             raise ValueError(msg)
 
         if check_rows_cols and N <= K:

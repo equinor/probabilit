@@ -3,7 +3,13 @@ import pytest
 import scipy as sp
 from scipy.stats import spearmanr
 
-from probabilit.correlation import ImanConover, decorrelate
+from probabilit.correlation import (
+    Cholesky,
+    Composite,
+    ImanConover,
+    Permutation,
+    decorrelate,
+)
 
 
 @pytest.fixture
@@ -94,7 +100,8 @@ def test_correlation_matrix_validation(rng):
         ImanConover().set_target(C_invalid)(X)
 
 
-def test_input_validation(rng):
+@pytest.mark.parametrize("correlator", [Cholesky, ImanConover, Permutation, Composite])
+def test_input_validation(rng, correlator):
     N = 100
     K = 3
     X = rng.normal(size=(N, K))
@@ -106,7 +113,7 @@ def test_input_validation(rng):
     )
 
     with pytest.raises(ValueError, match=r"does not match shape of correlation matrix"):
-        ImanConover().set_target(C)(X)
+        correlator().set_target(C)(X)
 
 
 def test_orthogonality_precision(rng):
