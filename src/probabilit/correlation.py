@@ -101,9 +101,9 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     ...               [0.5,   1, 0.5],
     ...               [0.1, 0.5, 1]])
     >>> nearest_correlation_matrix(X, weights=H)
-    array([[1.        , 0.94171..., 0.77365...],
-           [0.94171..., 1.        , 0.94171...],
-           [0.77365..., 0.94171..., 1.        ]])
+    array([[1..., 0.94171..., 0.77365...],
+           [0.94171..., 1..., 0.94171...],
+           [0.77365..., 0.94171..., 1...]])
     """
     if not isinstance(matrix, np.ndarray):
         raise TypeError("Input argument `matrix` must be np.ndarray.")
