@@ -38,6 +38,16 @@ def test_preserves_marginal_distributions(rng, sample_data):
         assert np.allclose(np.sort(X[:, k]), np.sort(X_transformed[:, k]))
 
 
+def test_preserves_marginal_distributions_with_ties():
+    X = np.array([[0, 0]] * 2 + [[0, 1]] * 3 + [[1, 0]] * 2 + [[1, 1]] * 3)
+    sorted_samples = np.sort(X, axis=0)
+    C = np.corrcoef(sorted_samples, rowvar=False)
+
+    X_transformed = ImanConover().set_target(C)(X)
+
+    np.testing.assert_array_equal(np.sort(X_transformed, axis=0), sorted_samples)
+
+
 def test_achieves_target_correlations(sample_data):
     X, C = sample_data
 
