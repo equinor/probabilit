@@ -177,9 +177,3 @@ class TestUniform:
         expected_variance = (max_val - min_val) ** 2 / 12
         expected_std = np.sqrt(expected_variance)
         np.testing.assert_allclose(np.std(samples), expected_std, rtol=0.05)
-
-
-if __name__ == "__main__":
-    import pytest
-
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "--capture=sys"])

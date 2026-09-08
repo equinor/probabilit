@@ -58,9 +58,3 @@ def test_garbage_collector_large_graph():
     # Verify that GC worked
     assert hasattr(result, "samples_")
     assert not any(hasattr(n, "samples_") for n in sampling_nodes)
-
-
-if __name__ == "__main__":
-    import pytest
-
-    pytest.main(args=[__file__, "-v", "--capture=sys"])

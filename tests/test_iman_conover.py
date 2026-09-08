@@ -210,7 +210,3 @@ class TestImanConover:
             ValueError, match=r"Rank data correlation not positive definite"
         ):
             transform(X)
-
-
-if __name__ == "__main__":
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "-l"])

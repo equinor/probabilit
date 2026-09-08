@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from probabilit.modeling import Distribution, NoOp, Transform
+from probabilit.modeling import NoOp, Transform
 
 
 def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
@@ -19,6 +19,7 @@ def plot(*variables, corr=None, sample_kwargs=None, **kwargs):
 
     Examples
     --------
+    >>> from probabilit import Distribution
     >>> a = Distribution("uniform", loc=0, scale=1)
     >>> b = Distribution("uniform", loc=0, scale=1)
     >>> c = Distribution("uniform", loc=0, scale=1)
@@ -69,6 +70,7 @@ def treeprint(node):
 
     Examples
     --------
+    >>> from probabilit import Distribution
     >>> scale = Distribution("expon")
     >>> a = Distribution("norm", loc=1, scale=scale)
     >>> treeprint(a + scale - scale**2)
@@ -98,21 +100,3 @@ def treeprint(node):
                 )
 
     return _treeprint(node, last=True, header="", root=True)
-
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(42)
-    # mu = Constant(1)
-    a = Distribution("norm", loc=0, scale=1)
-    b = Distribution("norm", loc=a, scale=0.5)
-
-    plot(a, b)
-    grid = plot(a)
-
-    from probabilit.modeling import MultivariateDistribution
-
-    cov = np.array([[1, 0.9], [0.9, 1]])
-    n1, n2 = MultivariateDistribution("multivariate_normal", mean=[1, 2], cov=cov)
-    from probabilit.inspection import plot
-
-    plot(n1, n2)
