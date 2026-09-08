@@ -173,8 +173,11 @@ def _is_positive_definite(X):
 
 
 class Correlator(abc.ABC):
-    def set_target(self, correlation_matrix, cholesky=True):
+    def set_target(self, correlation_matrix):
         """Set target correlation matrix."""
+        return self._set_target(correlation_matrix, cholesky=True)
+
+    def _set_target(self, correlation_matrix, *, cholesky):
         if not isinstance(correlation_matrix, np.ndarray):
             raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
         if not correlation_matrix.ndim == 2:
@@ -255,10 +258,6 @@ class Cholesky(Correlator):
     array([1.11972638, 0.75668173])
 
     """
-
-    def set_target(self, correlation_matrix):
-        super().set_target(correlation_matrix)
-        return self
 
     def __call__(self, X) -> np.ndarray:
         """Transform an input matrix X.
@@ -379,10 +378,6 @@ class ImanConover(Correlator):
     np.float64(0.592541)
     """
 
-    def set_target(self, correlation_matrix):
-        super().set_target(correlation_matrix)
-        return self
-
     def __call__(self, X) -> np.ndarray:
         """Transform an input matrix X.
 
@@ -437,8 +432,8 @@ class ImanConover(Correlator):
         for k in range(K):
             # If row j is the k'th largest in `correlated_scores`, then
             # we map the k'th largest entry in X to row j.
-            ranks = sp.stats.rankdata(correlated_scores[:, k]).astype(int) - 1
-            result[:, k] = np.sort(X[:, k])[ranks]
+            rank_indices = sp.stats.rankdata(correlated_scores[:, k]).astype(int) - 1
+            result[:, k] = np.sort(X[:, k])[rank_indices]
 
         return result
 
@@ -607,7 +602,7 @@ class Permutation(Correlator):
             A weight matrix, with shape (variables, variables).
             The default is None, which corresponds to 1 in every entry.
         """
-        super().set_target(correlation_matrix, cholesky=False)
+        super()._set_target(correlation_matrix, cholesky=False)
         weights = np.ones_like(self.C) if weights is None else weights
         self.weights = weights / np.sum(weights)
         self.triu_indices = np.triu_indices(self.C.shape[0], k=1)
@@ -664,22 +659,16 @@ class Permutation(Correlator):
                 f"Running permutation correlator for {self.iters or 'inf'} iterations."
             )
 
-        def product(iterations_gen, variables_gen):
-            # itertools.product only works for finite inputs, so we need this
-            for i in iterations_gen:
-                for j in variables_gen:
-                    yield (i, j)
-
-        # Set up loop generator
+        # itertools.product would consume the infinite counter when iters=0.
         iter_gen = range(1, self.iters + 1) if self.iters else itertools.count(1)
-        loop_gen = product(iter_gen, range(num_vars))  # (iteration, k)
+        loop_gen = ((i, j) for i in iter_gen for j in range(num_vars))
         swaps_gen = SwapIndexGenerator(rng=self.rng, n=num_obs)
 
         # Set up variables that are tracked in the main loop
         corr_mat = CorrelationMatrix(
             X, correlation_type=self.correlation_type, check=False
         )
-        current_error = self._error(observed=corr_mat[:, :], target=self.C)
+        current_error = self._error(observed=corr_mat.corr_mat, target=self.C)
 
         # Main loop. For each iteration, k cycles through all variables.
         # This parametrizes the algorithm so iterations is less sensitive to k.
@@ -709,7 +698,7 @@ class Permutation(Correlator):
 
             # Check convergence on every cycle through columns (k==0)
             if k == 0:
-                current_error = self._error(corr_mat[:, :], self.C)
+                current_error = self._error(corr_mat.corr_mat, self.C)
                 if current_error < self.tol:
                     if self.verbose:
                         print(
@@ -873,8 +862,8 @@ class CorrelationMatrix:
     def __repr__(self) -> str:
         return repr(self.corr_mat)
 
-    def __getitem__(self, *args, **kwargs) -> np.ndarray | np.floating:
-        return self.corr_mat.__getitem__(*args, **kwargs)
+    def __getitem__(self, key, /) -> np.ndarray | np.floating:
+        return self.corr_mat[key]
 
     def commit(self, col, i, j):
         """Commit a swap, storing new data and new correlation matrix."""
@@ -967,9 +956,25 @@ class Composite(Correlator):
     array([-0.23,  1.  , -0.25, -0.27, -0.88, -0.24])
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(
+        self,
+        *,
+        weights=None,
+        iterations=1000,
+        tol=0.01,
+        correlation_type="pearson",
+        random_state=None,
+        verbose=False,
+    ) -> None:
         self.iman_conover_correlator = ImanConover()
-        self.permutation_correlator = Permutation(*args, **kwargs)
+        self.permutation_correlator = Permutation(
+            weights=weights,
+            iterations=iterations,
+            tol=tol,
+            correlation_type=correlation_type,
+            random_state=random_state,
+            verbose=verbose,
+        )
 
     def set_target(self, correlation_matrix, *, weights=None):
         self.iman_conover_correlator.set_target(correlation_matrix)
