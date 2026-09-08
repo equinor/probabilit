@@ -30,14 +30,19 @@ Induce correlations
 0.279652...
 """
 
+from __future__ import annotations
+
 import abc
 import contextlib
 import dataclasses
 import itertools
 import os
 import pathlib
+from collections.abc import Sequence
+from typing import Any, Literal, Self
 
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 
 # CVXPY prints error messages about incompatible ortools version during import.
@@ -53,11 +58,20 @@ with (
     import cvxpy as cp
 
 
+type _RealArray = npt.NDArray[np.integer | np.floating]
+
+
 class CorrelatorError(Exception):
     pass
 
 
-def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False):
+def nearest_correlation_matrix(
+    matrix: _RealArray,
+    *,
+    weights: _RealArray | None = None,
+    eps: float = 1e-6,
+    verbose: bool = False,
+) -> _RealArray:
     """Returns the correlation matrix nearest to `matrix`, weighted elementwise
     by `weights`.
 
@@ -78,6 +92,7 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     -------
     np.ndarray
         The correlation matrix that is nearest to the input matrix.
+        An already-valid input matrix is returned unchanged.
 
     Notes
     -----
@@ -164,7 +179,7 @@ def nearest_correlation_matrix(matrix, *, weights=None, eps=1e-6, verbose=False)
     return result
 
 
-def _is_positive_definite(X):
+def _is_positive_definite(X: _RealArray) -> bool:
     try:
         np.linalg.cholesky(X)
     except np.linalg.LinAlgError:
@@ -173,11 +188,11 @@ def _is_positive_definite(X):
 
 
 class Correlator(abc.ABC):
-    def set_target(self, correlation_matrix):
+    def set_target(self, correlation_matrix: _RealArray) -> Self:
         """Set target correlation matrix."""
         return self._set_target(correlation_matrix, cholesky=True)
 
-    def _set_target(self, correlation_matrix, *, cholesky):
+    def _set_target(self, correlation_matrix: _RealArray, *, cholesky: bool) -> Self:
         if not isinstance(correlation_matrix, np.ndarray):
             raise TypeError("Input argument `correlation_matrix` must be NumPy array.")
         if not correlation_matrix.ndim == 2:
@@ -193,10 +208,12 @@ class Correlator(abc.ABC):
 
         self.C = correlation_matrix.copy()
         if cholesky:
-            self.P = np.linalg.cholesky(self.C)
+            self.P: npt.NDArray[np.floating] = np.linalg.cholesky(self.C)
         return self
 
-    def _validate_X(self, X, check_rows_cols=True):
+    def _validate_X(
+        self, X: _RealArray, check_rows_cols: bool = True
+    ) -> tuple[int, int]:
         """Validate array X of shape (observations, variables)."""
         if not (hasattr(self, "C")):
             raise CorrelatorError("User must call `set_target` first.")
@@ -220,7 +237,7 @@ class Correlator(abc.ABC):
         return N, K
 
     @abc.abstractmethod
-    def __call__(self, X) -> np.ndarray:
+    def __call__(self, X: _RealArray) -> _RealArray:
         """Transform an input matrix X of shape (observations, variables)."""
 
 
@@ -259,7 +276,7 @@ class Cholesky(Correlator):
 
     """
 
-    def __call__(self, X) -> np.ndarray:
+    def __call__(self, X: _RealArray) -> npt.NDArray[np.floating]:
         """Transform an input matrix X.
 
         Parameters
@@ -378,7 +395,7 @@ class ImanConover(Correlator):
     np.float64(0.592541)
     """
 
-    def __call__(self, X) -> np.ndarray:
+    def __call__(self, X: _RealArray) -> _RealArray:
         """Transform an input matrix X.
 
         The output will have the same marginal distributions, but with
@@ -459,13 +476,15 @@ class SwapIndexGenerator:
     (array([7, 0, 4, 2]), array([3, 5, 1, 8]))
     """
 
-    def __init__(self, rng, n: int) -> None:
+    def __init__(self, rng: np.random.Generator, n: int | np.integer) -> None:
         assert n >= 2
         self.rng = rng
-        self.indices = np.arange(n)
+        self.indices: npt.NDArray[np.integer] = np.arange(n)
         self.permutation = self.rng.permutation(self.indices)
 
-    def __call__(self, size: int) -> tuple[np.ndarray, np.ndarray]:
+    def __call__(
+        self, size: int | np.integer
+    ) -> tuple[npt.NDArray[np.integer], npt.NDArray[np.integer]]:
         assert size >= 1
 
         # Get 2 * size elements
@@ -488,12 +507,12 @@ class Permutation(Correlator):
     def __init__(
         self,
         *,
-        weights=None,
-        iterations=1000,
-        tol=0.01,
-        correlation_type="pearson",
-        random_state=None,
-        verbose=False,
+        weights: _RealArray | None = None,
+        iterations: int = 1000,
+        tol: float = 0.01,
+        correlation_type: Literal["pearson", "spearman"] = "pearson",
+        random_state: int | np.random.Generator | None = None,
+        verbose: bool = False,
     ) -> None:
         """Create a Permutation instance, which induces correlations
         between variables in X by randomly shuffling rows within each column.
@@ -591,7 +610,9 @@ class Permutation(Correlator):
         self.verbose = verbose
         self.correlation_type = correlation_type
 
-    def set_target(self, correlation_matrix, *, weights=None):
+    def set_target(
+        self, correlation_matrix: _RealArray, *, weights: _RealArray | None = None
+    ) -> Self:
         """Set the target correlation matrix.
 
         Parameters
@@ -604,18 +625,18 @@ class Permutation(Correlator):
         """
         super()._set_target(correlation_matrix, cholesky=False)
         weights = np.ones_like(self.C) if weights is None else weights
-        self.weights = weights / np.sum(weights)
+        self.weights: npt.NDArray[np.floating] = weights / np.sum(weights)
         self.triu_indices = np.triu_indices(self.C.shape[0], k=1)
         return self
 
-    def _error(self, observed, target):
+    def _error(self, observed: _RealArray, target: _RealArray) -> float:
         """Compute RMSE over upper triangular part of corr(X) - target."""
         idx = self.triu_indices  # Get upper triangular indices (ignore diag)
         weighted_residuals_sq = self.weights[idx] * (observed[idx] - target[idx]) ** 2.0
         return float(np.sqrt(np.sum(weighted_residuals_sq)))
 
     @staticmethod
-    def subiters(n, i):
+    def subiters(n: int, i: int) -> int:
         """Number of sub-iterations (swaps) per iteration."""
         # Use longer swap lengths in early iterations. The last half
         # of the iterations will use 1 sub-iteration. The second half of the
@@ -629,7 +650,7 @@ class Permutation(Correlator):
         C = np.log2(n) + 1
         return int(np.ceil(C ** (1 - (2 * i / n))))
 
-    def __call__(self, X) -> np.ndarray:
+    def __call__(self, X: _RealArray) -> _RealArray:
         """Cycle through through columns (variables), and for each
         column it swaps random rows (observations). If the result
         leads to a smaller error (correlation closer to target), then it is
@@ -710,7 +731,9 @@ class Permutation(Correlator):
         return corr_mat.X  # The permuted data stored in CorrelationMatrix
 
 
-def decorrelate(X, remove_variance=True):
+def decorrelate(
+    X: _RealArray, remove_variance: bool = True
+) -> npt.NDArray[np.floating]:
     """Removes correlations or covariance from data X.
 
     Examples
@@ -824,7 +847,12 @@ class CorrelationMatrix:
            [ 0.325, -0.6  , -0.151,  1.   ]])
     """
 
-    def __init__(self, X, correlation_type="pearson", check=True) -> None:
+    def __init__(
+        self,
+        X: _RealArray,
+        correlation_type: Literal["pearson", "spearman"] = "pearson",
+        check: bool = True,
+    ) -> None:
         valid_corrs = ("pearson", "spearman")
         assert correlation_type in valid_corrs
         assert X.ndim == 2
@@ -837,6 +865,7 @@ class CorrelationMatrix:
         self.X = X.copy()
 
         # Store a copy of the data in the space we're inducing correlations in
+        self.X_: _RealArray
         if self.correlation_type == "pearson":
             self.X_ = self.X
         elif self.correlation_type == "spearman":
@@ -850,22 +879,31 @@ class CorrelationMatrix:
         # Compute the correlation matrix of the data
         self.m, self.n = self.X_.shape
         X_centered = self.X_ - np.mean(self.X_, axis=0)
-        self.numerator = (X_centered.T @ X_centered) / self.m
-        self.denominator = np.std(X_centered, axis=0)
+        self.numerator: npt.NDArray[np.floating] = (X_centered.T @ X_centered) / self.m
+        self.denominator: npt.NDArray[np.floating] = np.std(X_centered, axis=0)
         if np.any(np.isclose(self.denominator, 0)):
             raise ValueError("X has one or several constant columns")
 
-        self.corr_mat = (self.numerator / self.denominator[None, :]) / self.denominator[
-            :, None
-        ]
+        self.corr_mat: npt.NDArray[np.floating] = (
+            self.numerator / self.denominator[None, :]
+        ) / self.denominator[:, None]
 
     def __repr__(self) -> str:
         return repr(self.corr_mat)
 
-    def __getitem__(self, key, /) -> np.ndarray | np.floating:
+    def __getitem__(
+        self,
+        key: Any,  # noqa: ANN401
+        /,
+    ) -> npt.NDArray[np.floating] | np.floating:
         return self.corr_mat[key]
 
-    def commit(self, col, i, j):
+    def commit(
+        self,
+        col: int,
+        i: int | Sequence[int] | npt.NDArray[np.integer],
+        j: int | Sequence[int] | npt.NDArray[np.integer],
+    ) -> Self:
         """Commit a swap, storing new data and new correlation matrix."""
 
         # Compute everything we need to update internal state
@@ -886,7 +924,12 @@ class CorrelationMatrix:
             self.X[i, col], self.X[j, col] = self.X[j, col], self.X[i, col]
         return self
 
-    def _delta_numerator(self, col, i, j):
+    def _delta_numerator(
+        self,
+        col: int,
+        i: int | Sequence[int] | npt.NDArray[np.integer],
+        j: int | Sequence[int] | npt.NDArray[np.integer],
+    ) -> _RealArray:
         """Compute the delta in the numerator when swapping."""
         if self.check:
             assert isinstance(col, int)
@@ -913,7 +956,12 @@ class CorrelationMatrix:
         delta_numerator[col] = 0.0
         return delta_numerator
 
-    def delta_column(self, col, i, j):
+    def delta_column(
+        self,
+        col: int,
+        i: int | Sequence[int] | npt.NDArray[np.integer],
+        j: int | Sequence[int] | npt.NDArray[np.integer],
+    ) -> npt.NDArray[np.floating]:
         """Returns the change in the column `col` in the correlation matrix
         when rows i and j are swapped. To save a change, use `.commit()`.
         """
@@ -921,7 +969,12 @@ class CorrelationMatrix:
         diff = self._delta_numerator(col, i, j)
         return diff / (self.m * self.denominator * self.denominator[col])
 
-    def update_column(self, col, i, j):
+    def update_column(
+        self,
+        col: int,
+        i: int | Sequence[int] | npt.NDArray[np.integer],
+        j: int | Sequence[int] | npt.NDArray[np.integer],
+    ) -> npt.NDArray[np.floating]:
         """Returns the new value of column `col` in the correlation matrix
         when rows i and j are swapped. To save a change, use `.commit()`.
         """
@@ -959,12 +1012,12 @@ class Composite(Correlator):
     def __init__(
         self,
         *,
-        weights=None,
-        iterations=1000,
-        tol=0.01,
-        correlation_type="pearson",
-        random_state=None,
-        verbose=False,
+        weights: _RealArray | None = None,
+        iterations: int = 1000,
+        tol: float = 0.01,
+        correlation_type: Literal["pearson", "spearman"] = "pearson",
+        random_state: int | np.random.Generator | None = None,
+        verbose: bool = False,
     ) -> None:
         self.iman_conover_correlator = ImanConover()
         self.permutation_correlator = Permutation(
@@ -976,12 +1029,14 @@ class Composite(Correlator):
             verbose=verbose,
         )
 
-    def set_target(self, correlation_matrix, *, weights=None):
+    def set_target(
+        self, correlation_matrix: _RealArray, *, weights: _RealArray | None = None
+    ) -> Self:
         self.iman_conover_correlator.set_target(correlation_matrix)
         self.permutation_correlator.set_target(correlation_matrix, weights=weights)
         return self
 
-    def __call__(self, X) -> np.ndarray:
+    def __call__(self, X: _RealArray) -> _RealArray:
         try:
             # First run ImanConover to get a good starting point
             X_ic = self.iman_conover_correlator(X)
