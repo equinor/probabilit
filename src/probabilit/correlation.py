@@ -59,6 +59,9 @@ with (
 
 
 type _RealArray = npt.NDArray[np.integer | np.floating]
+type _RandomState = (
+    int | np.integer | np.random.Generator | np.random.RandomState | None
+)
 
 
 class CorrelatorError(Exception):
@@ -511,7 +514,7 @@ class Permutation(Correlator):
         iterations: int = 1000,
         tol: float = 0.01,
         correlation_type: Literal["pearson", "spearman"] = "pearson",
-        random_state: int | np.random.Generator | None = None,
+        random_state: _RandomState = None,
         verbose: bool = False,
     ) -> None:
         """Create a Permutation instance, which induces correlations
@@ -531,7 +534,7 @@ class Permutation(Correlator):
             norm(desired_corr - actual_corr) < tol. The default is 0.05.
         correlation_type : str, optional
             Either "pearson" or "spearman". The default is "pearson".
-        random_state : np.random.Generator, int or None, optional
+        random_state : np.random.Generator, np.random.RandomState, int or None, optional
             A random state for the random number generator. The default is None.
         verbose : bool, optional
             Whether or not to print information. The default is False.
@@ -1016,7 +1019,7 @@ class Composite(Correlator):
         iterations: int = 1000,
         tol: float = 0.01,
         correlation_type: Literal["pearson", "spearman"] = "pearson",
-        random_state: int | np.random.Generator | None = None,
+        random_state: _RandomState = None,
         verbose: bool = False,
     ) -> None:
         self.iman_conover_correlator = ImanConover()

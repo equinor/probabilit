@@ -289,9 +289,20 @@ import functools
 import itertools
 import numbers
 import operator
+import typing
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
+from typing import TYPE_CHECKING, Self, cast, overload
 
 import networkx as nx
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 from scipy import stats
 from scipy._lib._util import check_random_state
@@ -299,19 +310,33 @@ from scipy._lib._util import check_random_state
 from probabilit.correlation import (
     Cholesky,
     Composite,
+    Correlator,
     ImanConover,
     Permutation,
+    _RandomState,
+    _RealArray,
     nearest_correlation_matrix,
 )
 from probabilit.garbage_collector import GarbageCollector
 from probabilit.utils import zip_args
+
+if TYPE_CHECKING:
+    from scipy.stats._distn_infrastructure import rv_frozen
+    from scipy.stats._multivariate import multi_rv_frozen
+
+# A graph can mix sample dtypes and value-producing nodes with NoOp nodes.
+type _Samples = npt.NDArray[typing.Any]
+type _Node = Node[typing.Any]
+type _NodeInput = complex | np.number | numbers.Number | _Node | OverloadMixin
+type _Quantiles = Sequence[float] | _RealArray
+
 
 # =============================================================================
 # FUNCTIONS
 # =============================================================================
 
 
-def python_to_prob(argument):
+def python_to_prob(argument: _NodeInput) -> _Node:
     """Convert basic Python types to probabilit types."""
     if isinstance(argument, numbers.Number):
         return Constant(argument)
@@ -378,16 +403,22 @@ def python_to_prob(argument):
 #     parents exist).
 
 
-class Node(abc.ABC):
+class Node[SampleT: (_Samples, None)](abc.ABC):
     """A node in the computational graph."""
 
     id_iter = itertools.count()  # Every node gets a unique ID
 
+    samples_: SampleT
+
+    @property
+    @abc.abstractmethod
+    def is_source_node(self) -> bool: ...
+
     def __init__(self) -> None:
         self._id = next(self.id_iter)
-        self._correlations = []
+        self._correlations: list[tuple[list[Node[_Samples]], _RealArray]] = []
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Node):
             return NotImplemented
         # Needed for set() to work on Node. Equality in models must use Equal()
@@ -397,10 +428,10 @@ class Node(abc.ABC):
         return self._id
 
     @abc.abstractmethod
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         """Yield the parent nodes of this node."""
 
-    def copy(self):
+    def copy(self) -> Self:
         """Copy the Node, including the entire graph above it.
 
         Examples
@@ -416,14 +447,14 @@ class Node(abc.ABC):
         False
         """
         # Copy parents first to preserve sharing without recursing through the graph.
-        memo = {}
+        memo: dict[int, object] = {}
         for node in nx.topological_sort(self.to_graph()):
             if node is not self:
                 copy.deepcopy(node, memo)
 
         return copy.deepcopy(self, memo)
 
-    def nodes(self):
+    def nodes(self) -> Iterator[_Node]:
         """Yields `self` and all ancestors using depth-first-search.
 
         Examples
@@ -437,12 +468,12 @@ class Node(abc.ABC):
         Constant(2)
         Distribution("norm")
         """
-        queue = [(self)]
+        queue: list[_Node] = [(self)]
         while queue:
             yield (node := queue.pop())
             queue.extend(node.get_parents())
 
-    def num_distribution_nodes(self):
+    def num_distribution_nodes(self) -> int:
         """Number of unique ancestor nodes that are distribution nodes."""
         return sum(
             1 for node in set(self.nodes()) if isinstance(node, AbstractDistribution)
@@ -450,20 +481,20 @@ class Node(abc.ABC):
 
     def sample(
         self,
-        size=1,
+        size: int | np.integer = 1,
         *,
-        random_state=None,
-        method=None,
-        correlator="composite",
-        gc_strategy=None,
-    ):
+        random_state: _RandomState = None,
+        method: str | None = None,
+        correlator: Correlator | str = "composite",
+        gc_strategy: Collection[_Node] | None = None,
+    ) -> SampleT:
         """Sample the current node and assign attribute `samples_` to nodes.
 
         Parameters
         ----------
         size : int, optional
             Number of samples to draw.
-        random_state : np.random.Generator, int or None, optional
+        random_state : np.random.Generator, np.random.RandomState, int or None, optional
             A random state for the random number generator. The default is None.
         method : str, optional
             Sampling method, one of "lhs" (qmc.LatinHypercube), "halton"
@@ -477,12 +508,12 @@ class Node(abc.ABC):
             If None, no garbage collection is performed and the attribute
             `.samples_` will be set on all nodes. If an empty list [], then
             all nodes except the final one will be garbage collected. If a list
-            of Node instances, then those will be garbage collected.
+            of Node instances, then those will also be kept.
 
         Returns
         -------
-        np.ndarray
-            An array of samples, with length `size`.
+        np.ndarray or None
+            An array of samples, with length `size`, or None for a NoOp node.
 
         Examples
         --------
@@ -546,17 +577,23 @@ class Node(abc.ABC):
         )
 
     def sample_from_quantiles(  # noqa: PLR0912, PLR0915
-        self, quantiles, *, correlator="composite", gc_strategy=None, random_state=None
-    ):
+        self,
+        quantiles: _RealArray,
+        *,
+        correlator: Correlator | str = "composite",
+        gc_strategy: Collection[_Node] | None = None,
+        random_state: _RandomState = None,
+    ) -> SampleT:
         """Use samples from an array of quantiles in [0, 1] to sample all
         distributions. The array must have shape (num_samples, dimensionality).
         """
         assert nx.is_directed_acyclic_graph(self.to_graph())
+        size: int
         size, n_dim = quantiles.shape
         assert n_dim == self.num_distribution_nodes()
 
         # Get the correct correlator class based on strings
-        CORRELATOR_MAP = {
+        CORRELATOR_MAP: dict[str, Correlator] = {
             "imanconover": ImanConover(),
             "cholesky": Cholesky(),
             "permutation": Permutation(random_state=random_state),
@@ -584,9 +621,13 @@ class Node(abc.ABC):
         # If we do not keep track of these then they will be sampled twice.
         # We will skip sampling a node if either (1) samples_ is set or (2)
         # the node has previously been sampled and garbage collected.
-        garbage_collected = set()
+        garbage_collected: set[_Node] = set()
 
-        def topo_sample(G, gc, garbage_collected):
+        def topo_sample(
+            G: nx.MultiDiGraph[_Node],
+            gc: GarbageCollector,
+            garbage_collected: set[_Node],
+        ) -> None:
             """Sample nodes in a graph G in topological order.
 
             Both the arguments `gc` (garbage collector) and `garbage_collected`
@@ -608,10 +649,11 @@ class Node(abc.ABC):
                         "Node must be Constant, AbstractDistribution or Transform."
                     )
 
-                is_numeric = (node.samples_ is not None) and np.issubdtype(
-                    node.samples_.dtype, np.number
-                )
-                if is_numeric and not np.all(np.isfinite(node.samples_)):
+                if (
+                    node.samples_ is not None
+                    and np.issubdtype(node.samples_.dtype, np.number)
+                    and not np.all(np.isfinite(node.samples_))
+                ):
                     msg = f"Sampling gave non-finite values: {node}\n{node.samples_}"
                     raise ValueError(msg)
 
@@ -639,16 +681,16 @@ class Node(abc.ABC):
 
         # Go through all ancestor nodes and create a list [(var, corr), ...]
         # that contains all correlations we must induce
-        correlations = []
+        correlations: list[tuple[list[Node[_Samples]], _RealArray]] = []
         for node in set(self.nodes()):
             if hasattr(node, "_correlations"):
                 correlations.extend(node._correlations)
 
-        variable_sets = [set(variables) for (variables, _) in correlations]
-        # Map all variables to integers to associate them with a column
-        corr_variables = list(functools.reduce(set.union, variable_sets, set()))
         # Ensure consistent ordering for reproducible results
-        corr_variables = sorted(corr_variables, key=lambda n: n._id)
+        corr_variables = sorted(
+            {variable for variables, _ in correlations for variable in variables},
+            key=lambda n: n._id,
+        )
 
         # Check that the set of variables that the user wants to correlate
         # are allowed. The condition is that each variable and its ancestors
@@ -656,7 +698,7 @@ class Node(abc.ABC):
         # correlate A and B. In the graph A <- B -> C we cannot correlate
         # A and C. In general we can only correlate nodes whose correlation
         # cannot potentially be determined already from the graph structure.
-        seen = set()
+        seen: set[_Node] = set()
         for variable in corr_variables:
             var_plus_ancestors = set(variable.nodes())
 
@@ -692,14 +734,14 @@ class Node(abc.ABC):
 
         # Map to correlations
         var_to_int = {v: i for (i, v) in enumerate(corr_variables)}
-        correlations = [
+        indexed_correlations = [
             (tuple(var_to_int[var] for var in variables), corrmat)
             for (variables, corrmat) in correlations
         ]
 
         # If there are any correlations to induce, do so
-        if correlations:
-            for idxs, corr_mat in correlations:
+        if indexed_correlations:
+            for idxs, corr_mat in indexed_correlations:
                 nearest_corr_mat = nearest_correlation_matrix(np.array(corr_mat))
                 group_correlator = correlator.set_target(nearest_corr_mat)
 
@@ -720,7 +762,7 @@ class Node(abc.ABC):
         topo_sample(self.to_graph(), gc=gc, garbage_collected=garbage_collected)
         return self.samples_
 
-    def _is_initial_sampling_node(self):
+    def _is_initial_sampling_node(self) -> bool:
         """A node is an initial sample node iff:
         (1) It is a Distribution
         (2) None of its ancestors are Distributions (all are Constant/Transform)
@@ -733,7 +775,7 @@ class Node(abc.ABC):
         )
         return is_distribution and not ancestors_distr
 
-    def correlate(self, *variables, corr_mat):
+    def correlate(self, *variables: Node[_Samples], corr_mat: _RealArray) -> Self:
         """Store correlations on variables.
 
         When `.correlate(*variables)` is called on a node, the variables must
@@ -775,13 +817,13 @@ class Node(abc.ABC):
         self._correlations.append((list(variables), np.copy(corr_mat)))
         return self
 
-    def to_graph(self):
+    def to_graph(self) -> nx.MultiDiGraph[_Node]:
         """Convert the computational graph to a networkx MultiDiGraph."""
         nodes = list(self.nodes())
 
         # Special case if there is only one node
         if len(nodes) == 1:
-            G = nx.MultiDiGraph()
+            G: nx.MultiDiGraph[_Node] = nx.MultiDiGraph()
             G.add_node(self)
             return G
 
@@ -798,46 +840,46 @@ class Node(abc.ABC):
 class OverloadMixin:
     """Overloads dunder (double underscore) methods for easier modeling."""
 
-    def __add__(self, other) -> Add:
+    def __add__(self, other: _NodeInput) -> Add:
         return Add(self, other)
 
-    def __radd__(self, other) -> Add:
+    def __radd__(self, other: _NodeInput) -> Add:
         return Add(self, other)
 
-    def __mul__(self, other) -> Multiply:
+    def __mul__(self, other: _NodeInput) -> Multiply:
         return Multiply(self, other)
 
-    def __rmul__(self, other) -> Multiply:
+    def __rmul__(self, other: _NodeInput) -> Multiply:
         return Multiply(self, other)
 
-    def __floordiv__(self, other) -> FloorDivide:
+    def __floordiv__(self, other: _NodeInput) -> FloorDivide:
         return FloorDivide(self, other)
 
-    def __rfloordiv__(self, other) -> FloorDivide:
+    def __rfloordiv__(self, other: _NodeInput) -> FloorDivide:
         return FloorDivide(other, self)
 
-    def __truediv__(self, other) -> Divide:
+    def __truediv__(self, other: _NodeInput) -> Divide:
         return Divide(self, other)
 
-    def __rtruediv__(self, other) -> Divide:
+    def __rtruediv__(self, other: _NodeInput) -> Divide:
         return Divide(other, self)
 
-    def __mod__(self, other) -> Mod:
+    def __mod__(self, other: _NodeInput) -> Mod:
         return Mod(self, other)
 
-    def __rmod__(self, other) -> Mod:
+    def __rmod__(self, other: _NodeInput) -> Mod:
         return Mod(other, self)
 
-    def __sub__(self, other) -> Subtract:
+    def __sub__(self, other: _NodeInput) -> Subtract:
         return Subtract(self, other)
 
-    def __rsub__(self, other) -> Subtract:
+    def __rsub__(self, other: _NodeInput) -> Subtract:
         return Subtract(other, self)
 
-    def __pow__(self, other) -> Power:
+    def __pow__(self, other: _NodeInput) -> Power:
         return Power(self, other)
 
-    def __rpow__(self, other) -> Power:
+    def __rpow__(self, other: _NodeInput) -> Power:
         return Power(other, self)
 
     def __neg__(self) -> Negate:
@@ -846,16 +888,16 @@ class OverloadMixin:
     def __abs__(self) -> Abs:
         return Abs(self)
 
-    def __lt__(self, other) -> LessThan:
+    def __lt__(self, other: _NodeInput) -> LessThan:
         return LessThan(self, other)
 
-    def __le__(self, other) -> LessThanOrEqual:
+    def __le__(self, other: _NodeInput) -> LessThanOrEqual:
         return LessThanOrEqual(self, other)
 
-    def __gt__(self, other) -> GreaterThan:
+    def __gt__(self, other: _NodeInput) -> GreaterThan:
         return GreaterThan(self, other)
 
-    def __ge__(self, other) -> GreaterThanOrEqual:
+    def __ge__(self, other: _NodeInput) -> GreaterThanOrEqual:
         return GreaterThanOrEqual(self, other)
 
     # TODO: __eq__ (==) and __ne__ (!=) are not implemented here,
@@ -863,7 +905,7 @@ class OverloadMixin:
     # both equality checks and __hash__.
 
 
-class Constant(Node, OverloadMixin):
+class Constant(Node[_Samples], OverloadMixin):
     """A constant is a number or a string.
     If the value is a string, sampling returns an array of the string value.
 
@@ -875,32 +917,39 @@ class Constant(Node, OverloadMixin):
     array(['car', 'car', 'car', 'car', 'car'], dtype='<U3')
     """
 
-    is_source_node = True  # A Constant is always a source node
+    is_source_node: bool = True  # A Constant is always a source node
 
-    def __init__(self, value) -> None:
-        self.value = value.value if isinstance(value, Constant) else value
+    def __init__(self, value: object) -> None:
+        self.value: object = value.value if isinstance(value, Constant) else value
         super().__init__()
 
-    def _sample(self, size=None):
+    @overload
+    def _sample(self, size: None = None) -> object: ...
+
+    @overload
+    def _sample(self, size: int | np.integer) -> _Samples: ...
+
+    def _sample(self, size: int | np.integer | None = None) -> object:
         if size is None:
             return self.value
         return np.array([self.value] * size)
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         yield from []  # A Constant does not have any parents
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.value})"
 
 
-class AbstractDistribution(Node, OverloadMixin, abc.ABC):
-    pass
+class AbstractDistribution(Node[_Samples], OverloadMixin, abc.ABC):
+    @abc.abstractmethod
+    def _sample(self, q: _Quantiles) -> _Samples: ...
 
 
 class Distribution(AbstractDistribution):
     """A distribution is a sampling node with or without ancestors."""
 
-    def __init__(self, distr, *args, **kwargs) -> None:
+    def __init__(self, distr: str, *args: object, **kwargs: object) -> None:
         self.distr = distr
         self.args = args
         self.kwargs = kwargs
@@ -916,7 +965,7 @@ class Distribution(AbstractDistribution):
             out += f", {kwargs}"
         return out + ")"
 
-    def to_scipy(self):
+    def to_scipy(self) -> rv_frozen | multi_rv_frozen:
         if not self._is_initial_sampling_node():
             raise Exception(
                 "To convert a distribution to a scipy object, "
@@ -933,7 +982,7 @@ class Distribution(AbstractDistribution):
                 f"{self.distr!r} is not a valid scipy distribution"
             ) from exc
 
-        def to_number(arg):
+        def to_number(arg: object) -> object:
             """Unpack argument to a number in case parents are Constant/Transform"""
             return arg.sample(1)[0] if isinstance(arg, Node) else arg
 
@@ -942,8 +991,8 @@ class Distribution(AbstractDistribution):
 
         return distribution(*args, **kwargs)
 
-    def _sample(self, q):
-        def unpack(arg):
+    def _sample(self, q: _Quantiles) -> _Samples:
+        def unpack(arg: object) -> object:
             """Unpack distribution arguments (parents) to arrays if Node."""
             return arg.samples_ if isinstance(arg, Node) else arg
 
@@ -961,14 +1010,14 @@ class Distribution(AbstractDistribution):
             seed = int(q[0] * 2**20)  # Seed based on q
             return distribution(*args, **kwargs).rvs(size=len(q), random_state=seed)
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         # A distribution only has parents if it has parameters that are Nodes
         for arg in self.args + tuple(self.kwargs.values()):
             if isinstance(arg, Node):
                 yield arg
 
     @property
-    def is_source_node(self):
+    def is_source_node(self) -> bool:
         return list(self.get_parents()) == []
 
 
@@ -978,9 +1027,9 @@ class EmpiricalDistribution(AbstractDistribution):
     A thin wrapper around numpy.quantile.
     """
 
-    is_source_node = True
+    is_source_node: bool = True
 
-    def __init__(self, data, **kwargs) -> None:
+    def __init__(self, data: npt.ArrayLike, **kwargs: object) -> None:
         self.data = np.array(data)
         self.kwargs = kwargs
         super().__init__()
@@ -988,10 +1037,13 @@ class EmpiricalDistribution(AbstractDistribution):
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"
 
-    def _sample(self, q):
-        return np.quantile(a=self.data, q=q, **self.kwargs)
+    def _sample(self, q: _Quantiles) -> _Samples:
+        # NumPy owns the keyword argument contract.
+        return cast(Callable[..., _Samples], np.quantile)(
+            a=self.data, q=q, **self.kwargs
+        )
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         yield from []  # A EmpiricalDistribution does not have any parents
 
 
@@ -1009,9 +1061,9 @@ class CumulativeDistribution(AbstractDistribution):
            13.89986301, 11.4520903 , 21.65440364, 18.3426251 ])
     """
 
-    is_source_node = True
+    is_source_node: bool = True
 
-    def __init__(self, quantiles, cumulatives) -> None:
+    def __init__(self, quantiles: npt.ArrayLike, cumulatives: npt.ArrayLike) -> None:
         self.q = np.array(quantiles)
         self.cumulatives = np.array(cumulatives)
         if not np.all(np.diff(self.q) > 0):
@@ -1028,11 +1080,11 @@ class CumulativeDistribution(AbstractDistribution):
             f"cumulatives={self.cumulatives!r})"
         )
 
-    def _sample(self, q):
+    def _sample(self, q: _Quantiles) -> _Samples:
         # Inverse CDF sampling
-        return np.interp(x=q, xp=self.q, fp=self.cumulatives)
+        return cast(_Samples, np.interp(x=q, xp=self.q, fp=self.cumulatives))
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         yield from []
 
 
@@ -1049,9 +1101,11 @@ class DiscreteDistribution(AbstractDistribution):
     array(['C', 'F', 'E', 'D', 'A', 'A', 'A', 'F', 'D'], dtype='<U1')
     """
 
-    is_source_node = True
+    is_source_node: bool = True
 
-    def __init__(self, values, probabilities=None) -> None:
+    def __init__(
+        self, values: npt.ArrayLike, probabilities: npt.ArrayLike | None = None
+    ) -> None:
         self.values = np.array(values)
         if probabilities is None:
             self.probabilities = np.ones(len(self.values), dtype=float)
@@ -1075,97 +1129,104 @@ class DiscreteDistribution(AbstractDistribution):
             f"probabilities={self.probabilities!r})"
         )
 
-    def _sample(self, q):
+    def _sample(self, q: _Quantiles) -> _Samples:
         cumulative_probabilities = np.cumsum(self.probabilities)
         idx = np.searchsorted(cumulative_probabilities, v=q, side="right")
         return self.values[idx]
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         yield from []
 
 
 # ========================================================
 
 
-class Transform(Node, OverloadMixin, abc.ABC):
+class Transform[SampleT: (_Samples, None)](Node[SampleT], OverloadMixin, abc.ABC):
     """Transform nodes represent arithmetic operations."""
 
-    is_source_node = False
+    is_source_node: bool = False
+
+    @abc.abstractmethod
+    def _sample(self) -> _Samples | None: ...
 
     def __repr__(self) -> str:
         parents = ", ".join(repr(parent) for parent in self.get_parents())
         return f"{type(self).__name__}({parents})"
 
 
-class VariadicTransform(Transform):
+class VariadicTransform[SampleT: (_Samples, None)](Transform[SampleT]):
     """Parent class for variadic transforms (must be associative), e.g.
     Add(arg1, arg2, arg3, arg4, ...)
     Multiply(arg1, arg2, arg3, arg4, ...)
 
     """
 
-    def __init__(self, *args) -> None:
+    op: Callable[[_Samples, _Samples], _Samples]
+
+    def __init__(self, *args: _NodeInput) -> None:
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
 
-    def _sample(self, size=None):
+    def _sample(self, size: int | np.integer | None = None) -> _Samples | None:
         samples = (parent.samples_ for parent in self.parents)
         return functools.reduce(self.op, samples)
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         yield from self.parents
 
 
-class Add(VariadicTransform):
-    op = operator.add
+class Add(VariadicTransform[_Samples]):
+    op = staticmethod(operator.add)
 
 
-class Multiply(VariadicTransform):
-    op = operator.mul
+class Multiply(VariadicTransform[_Samples]):
+    op = staticmethod(operator.mul)
 
 
-class Max(VariadicTransform):
+class Max(VariadicTransform[_Samples]):
     op = np.maximum
 
 
-class Min(VariadicTransform):
+class Min(VariadicTransform[_Samples]):
     op = np.minimum
 
 
-class All(VariadicTransform):
+class All(VariadicTransform[_Samples]):
     op = np.logical_and
 
 
-class Any(VariadicTransform):
+class Any(VariadicTransform[_Samples]):
     op = np.logical_or
 
 
-class Avg(VariadicTransform):
-    def _sample(self, size=None):
+class Avg(VariadicTransform[_Samples]):
+    def _sample(self, size: int | np.integer | None = None) -> _Samples:
         # Avg(a, Avg(b, c)) !=  Avg(Avg(a, b), c), so we override _sample()
         samples = tuple(parent.samples_ for parent in self.parents)
         return np.average(np.vstack(samples), axis=0)
 
 
-class NoOp(VariadicTransform):
+class NoOp(VariadicTransform[None]):
     """Sample all ancestor variables, but do nothing else."""
 
-    def _sample(self, size=None):
+    def _sample(self, size: int | np.integer | None = None) -> None:
         tuple(parent.samples_ for parent in self.parents)
 
 
-class BinaryTransform(Transform):
+class BinaryTransform(Transform[_Samples]):
     """Class for binary transforms, such as Divide, Power, Subtract, etc."""
 
-    def __init__(self, *args) -> None:
+    op: Callable[[_Samples, _Samples], _Samples]
+
+    def __init__(self, *args: _NodeInput) -> None:
         self.parents = tuple(python_to_prob(arg) for arg in args)
         super().__init__()
 
-    def _sample(self, size=None):
+    def _sample(self, size: int | np.integer | None = None) -> _Samples:
         samples = (parent.samples_ for parent in self.parents)
         return self.op(*samples)
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         yield from self.parents
 
 
@@ -1178,15 +1239,15 @@ class Mod(BinaryTransform):
 
 
 class Divide(BinaryTransform):
-    op = operator.truediv
+    op = staticmethod(operator.truediv)
 
 
 class Power(BinaryTransform):
-    op = operator.pow
+    op = staticmethod(operator.pow)
 
 
 class Subtract(BinaryTransform):
-    op = operator.sub
+    op = staticmethod(operator.sub)
 
 
 class Equal(BinaryTransform):
@@ -1198,47 +1259,49 @@ class NotEqual(BinaryTransform):
 
 
 class LessThan(BinaryTransform):
-    op = operator.lt
+    op = staticmethod(operator.lt)
 
 
 class LessThanOrEqual(BinaryTransform):
-    op = operator.le
+    op = staticmethod(operator.le)
 
 
 class GreaterThan(BinaryTransform):
-    op = operator.gt
+    op = staticmethod(operator.gt)
 
 
 class GreaterThanOrEqual(BinaryTransform):
-    op = operator.ge
+    op = staticmethod(operator.ge)
 
 
 class IsClose(BinaryTransform):
     op = np.isclose
 
 
-class UnaryTransform(Transform):
+class UnaryTransform(Transform[_Samples]):
     """Class for unary tranforms, i.e. functions that take one argument, such
     as Abs(), Exp(), Log().
     """
 
-    def __init__(self, arg) -> None:
+    op: Callable[[_Samples], _Samples]
+
+    def __init__(self, arg: _NodeInput) -> None:
         self.parent = python_to_prob(arg)
         super().__init__()
 
-    def _sample(self, size=None):
+    def _sample(self, size: int | np.integer | None = None) -> _Samples:
         return self.op(self.parent.samples_)
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         yield self.parent
 
 
 class Negate(UnaryTransform):
-    op = operator.neg
+    op = staticmethod(operator.neg)
 
 
 class Abs(UnaryTransform):
-    op = operator.abs
+    op = staticmethod(operator.abs)
 
 
 class Log(UnaryTransform):
@@ -1327,19 +1390,24 @@ class Arctanh(UnaryTransform):
     op = np.arctanh
 
 
-class ScalarFunctionTransform(Transform):
+class ScalarFunctionTransform(Transform[_Samples]):
     """A general-purpose transform using a function that takes scalar arguments
     and returns a scalar result.
     """
 
-    def __init__(self, func, args, kwargs) -> None:
+    def __init__(
+        self,
+        func: Callable[..., object],
+        args: tuple[object, ...],
+        kwargs: Mapping[str, object],
+    ) -> None:
         self.func = func
         self.args = args
         self.kwargs = kwargs
         super().__init__()
 
-    def _sample(self, size=None):
-        def unpack(arg):
+    def _sample(self, size: int | np.integer | None = None) -> _Samples:
+        def unpack(arg: object) -> Iterable[object]:
             return arg.samples_ if isinstance(arg, Node) else itertools.repeat(arg)
 
         # Sample arguments
@@ -1353,27 +1421,31 @@ class ScalarFunctionTransform(Transform):
             ]
         )
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[_Node]:
         # A function has have parents if its arguments are Nodes
         for arg in self.args + tuple(self.kwargs.values()):
             if isinstance(arg, Node):
                 yield arg
 
 
-def scalar_transform(func):
+def scalar_transform(
+    func: Callable[..., object],
+) -> Callable[..., ScalarFunctionTransform]:
     """Transform a function, so that when it is called it is converted to
     a ScalarFunctionTransform.
     """
 
     @functools.wraps(func)
-    def transformed_function(*args, **kwargs):
+    def transformed_function(
+        *args: object, **kwargs: object
+    ) -> ScalarFunctionTransform:
         return ScalarFunctionTransform(func, args, kwargs)
 
     return transformed_function
 
 
-class MarginalDistribution(Transform):
-    """A maginal distribution is a 'slice' of a multivariate distribution.
+class MarginalDistribution(Transform[_Samples]):
+    """A marginal distribution is a 'slice' of a multivariate distribution.
 
     Examples
     --------
@@ -1385,25 +1457,27 @@ class MarginalDistribution(Transform):
     array([2, 1, 2, 1, 1])
     """
 
-    is_source_node = False
+    is_source_node: bool = False
 
-    def __init__(self, distr, d) -> None:
+    def __init__(self, distr: Distribution, d: int | np.integer) -> None:
         self.distr = distr
         self.d = d
         super().__init__()
 
-    def _sample(self):
+    def _sample(self) -> _Samples:
         # Simply slice the parent
         return np.atleast_2d(self.distr.samples_)[:, self.d]
 
-    def get_parents(self):
+    def get_parents(self) -> Iterator[Distribution]:
         yield self.distr
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.distr}, d={self.d})"
 
 
-def MultivariateDistribution(distr, *args, **kwargs):
+def MultivariateDistribution(
+    distr: str, *args: object, **kwargs: object
+) -> Iterator[MarginalDistribution]:
     """Factory function that yields marginal distributions.
 
     Examples
@@ -1417,8 +1491,8 @@ def MultivariateDistribution(distr, *args, **kwargs):
     >>> (m1 + m2 + m3).sample(5, random_state=0).astype(int)
     array([10, 10, 10, 10, 10])
     """
-    distr = Distribution(distr, *args, **kwargs)
+    distribution = Distribution(distr, *args, **kwargs)
 
     # Get dimensionality by sampling once
-    d = len(distr._sample(q=[0.5]).squeeze())
-    yield from (MarginalDistribution(distr, d=i) for i in range(d))
+    d = len(distribution._sample(q=[0.5]).squeeze())
+    yield from (MarginalDistribution(distribution, d=i) for i in range(d))
