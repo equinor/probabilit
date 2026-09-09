@@ -415,41 +415,13 @@ class Node(abc.ABC):
         >>> a2.kwargs["loc"] is a.kwargs["loc"]
         False
         """
-        # Map from ID to new object copy
-        id_to_new = {}
-
-        def update(item):
-            """Given an item, use the ID to map to new object copy."""
-            if isinstance(item, Node):
-                return id_to_new[item._id]
-            return copy.deepcopy(item)
-
-        # Go through nodes in topologial order, guaranteeing that parents
-        # have always been copied over to new graph when children are copied.
+        # Copy parents first to preserve sharing without recursing through the graph.
+        memo = {}
         for node in nx.topological_sort(self.to_graph()):
-            # Copy the node itself and update the mapping
-            copied = copy.copy(node)  # Copy a node WITHOUT copying the graph
-            id_to_new[copied._id] = copied
+            if node is not self:
+                copy.deepcopy(node, memo)
 
-            # Copy samples if they exist
-            if hasattr(copied, "samples_"):
-                copied.samples_ = np.copy(copied.samples_)
-
-            copied._correlations = copy.deepcopy(copied._correlations)
-
-            # Now that the node has been updated, update references to parents
-            # to point to Nodes in the new copied graph instead of the old one.
-            if isinstance(copied, (AbstractDistribution, ScalarFunctionTransform)):
-                copied.args = tuple(update(arg) for arg in copied.args)
-                copied.kwargs = {k: update(v) for (k, v) in copied.kwargs.items()}
-            elif isinstance(copied, (VariadicTransform, BinaryTransform)):
-                copied.parents = tuple(update(p) for p in copied.parents)
-            elif isinstance(copied, UnaryTransform):
-                copied.parent = update(copied.parent)
-            elif isinstance(copied, Constant):
-                copied.value = update(copied.value)
-
-        return id_to_new[self._id]
+        return copy.deepcopy(self, memo)
 
     def nodes(self):
         """Yields `self` and all ancestors using depth-first-search.
