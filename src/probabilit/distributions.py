@@ -41,25 +41,45 @@ the PERT distribution, then convert it to a Beta parametrization for scipy:
 (51.32..., 248.67...)
 """
 
+from __future__ import annotations
+
 import warnings
 
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 
-from probabilit.modeling import Distribution, Exp, Log, Sign
+from probabilit.modeling import (
+    AbstractDistribution,
+    Constant,
+    Distribution,
+    Exp,
+    Log,
+    Sign,
+    Transform,
+)
+
+type _Real = float | np.integer | np.floating
+type _Parameter = _Real | Constant | AbstractDistribution | Transform
 
 
-def Uniform(minimum=0, maximum=1):
+def Uniform(minimum: _Parameter = 0, maximum: _Parameter = 1) -> Distribution:
     """Uniform distribution on [minimum, maximum)."""
     return Distribution("uniform", loc=minimum, scale=maximum - minimum)
 
 
-def Normal(mean=0, std=1):
+def Normal(mean: _Parameter = 0, std: _Parameter = 1) -> Distribution:
     """Normal distribution parametrized by mean (loc) and std (scale)."""
     return Distribution("norm", loc=mean, scale=std)
 
 
-def TruncatedNormal(mean, std, *, low=-np.inf, high=np.inf):
+def TruncatedNormal(
+    mean: _Parameter,
+    std: _Parameter,
+    *,
+    low: _Parameter = -np.inf,
+    high: _Parameter = np.inf,
+) -> Distribution:
     """A truncated Normal distribution parametrized by mean (loc) and
     std (scale) defined on [low, high).
 
@@ -75,7 +95,7 @@ def TruncatedNormal(mean, std, *, low=-np.inf, high=np.inf):
 
 
 class Lognormal(Distribution):
-    def __init__(self, mean, std) -> None:
+    def __init__(self, mean: _Parameter, std: _Parameter) -> None:
         """
         A Lognormal distribution with mean and std corresponding directly
         to the expected value and standard deviation of the resulting lognormal.
@@ -104,7 +124,7 @@ class Lognormal(Distribution):
         super().__init__(distr="lognorm", s=sigma, scale=Exp(mu))
 
     @classmethod
-    def from_log_params(cls, mu, sigma):
+    def from_log_params(cls, mu: _Parameter, sigma: _Parameter) -> Distribution:
         """
         Create a lognormal distribution from log-space parameters.
         Parameters correspond to the mean and standard deviation of the
@@ -120,7 +140,15 @@ class Lognormal(Distribution):
         return Distribution("lognorm", s=sigma, scale=Exp(mu))
 
 
-def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
+def PERT(
+    low: _Real,
+    mode: _Real,
+    high: _Real,
+    *,
+    low_perc: _Real = 0.0,
+    high_perc: _Real = 1.0,
+    gamma: _Real = 4.0,
+) -> Distribution:
     """Returns a Beta distribution, parameterized by the PERT parameters.
     Finds an optimal parametrization given (low, mode, high) and
     returns Distribution("beta", a=..., b=..., loc=..., scale=...).
@@ -159,7 +187,14 @@ def PERT(low, mode, high, *, low_perc=0.0, high_perc=1.0, gamma=4.0):
     return Distribution("beta", a=a, b=b, loc=loc, scale=scale)
 
 
-def Triangular(low, mode, high, *, low_perc=0.0, high_perc=1.0):
+def Triangular(
+    low: _Real,
+    mode: _Real,
+    high: _Real,
+    *,
+    low_perc: _Real = 0.0,
+    high_perc: _Real = 1.0,
+) -> Distribution:
     """Find optimal scipy parametrization given (low, mode, high) and
     return Distribution("triang", loc=..., scale=..., c=...).
 
@@ -197,7 +232,14 @@ def Triangular(low, mode, high, *, low_perc=0.0, high_perc=1.0):
     return Distribution("triang", loc=loc, scale=scale, c=c)
 
 
-def _fit_triangular_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.90):
+def _fit_triangular_distribution(
+    low: _Real,
+    mode: _Real,
+    high: _Real,
+    *,
+    low_perc: _Real = 0.10,
+    high_perc: _Real = 0.90,
+) -> tuple[float, float, float]:
     """Returns a tuple (loc, scale, c) to be used with scipy.
 
     Description
@@ -235,15 +277,15 @@ def _fit_triangular_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.
     a = 2 / (high - low)
     b = 1 - (2 * high) / (high - low)
 
-    def scaler(x):
+    def scaler(x: _Real) -> _Real:
         return a * x + b
 
-    def inv_scaler(y):
+    def inv_scaler(y: _Real) -> _Real:
         return (y - b) / a
 
     low, mode, high = scaler(low), scaler(mode), scaler(high)
 
-    def rmse_minimum_maximum(parameters):
+    def rmse_minimum_maximum(parameters: npt.NDArray[np.floating]) -> np.floating:
         """Given (minimum, maximum) of a distribution, create the distribution,
         evaluate the inverse-CDF (PPF) and see how close (low, high) is to the
         desired values of (low, high).
@@ -310,7 +352,9 @@ def _fit_triangular_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.
     return float(loc), float(scale), float(c)
 
 
-def _pert_to_beta(minimum, mode, maximum, *, gamma=4.0):
+def _pert_to_beta(
+    minimum: _Real, mode: _Real, maximum: _Real, *, gamma: _Real = 4.0
+) -> tuple[_Real, _Real, _Real, _Real]:
     """Convert the PERT parametrization to a beta distribution.
 
     Returns (a, b, loc, scale).
@@ -342,7 +386,15 @@ def _pert_to_beta(minimum, mode, maximum, *, gamma=4.0):
     return a, b, loc, scale
 
 
-def _fit_pert_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.90, gamma=4):
+def _fit_pert_distribution(
+    low: _Real,
+    mode: _Real,
+    high: _Real,
+    *,
+    low_perc: _Real = 0.10,
+    high_perc: _Real = 0.90,
+    gamma: _Real = 4,
+) -> tuple[float, float]:
     """
     Returns the maximum and the minimum of a PERT distribution with
     percentiles corresponding to the inputs.
@@ -358,15 +410,15 @@ def _fit_pert_distribution(low, mode, high, *, low_perc=0.10, high_perc=0.90, ga
     a = 2 / (high - low)
     b = 1 - (2 * high) / (high - low)
 
-    def scaler(x):
+    def scaler(x: _Real) -> _Real:
         return a * x + b
 
-    def inv_scaler(y):
+    def inv_scaler(y: _Real) -> _Real:
         return (y - b) / a
 
     low, mode, high = scaler(low), scaler(mode), scaler(high)
 
-    def rmse_minimum_maximum(parameters):
+    def rmse_minimum_maximum(parameters: npt.NDArray[np.floating]) -> np.floating:
         """Given (minimum, maximum) of a distribution, create the distribution,
         evaluate the inverse-CDF (PPF) and see how close (low, high) is to the
         desired values of (low, high).
