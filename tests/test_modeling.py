@@ -8,6 +8,8 @@ from probabilit.distributions import Triangular, TruncatedNormal
 from probabilit.modeling import (
     All,
     Constant,
+    CumulativeDistribution,
+    DiscreteDistribution,
     Distribution,
     EmpiricalDistribution,
     Equal,
@@ -16,6 +18,7 @@ from probabilit.modeling import (
     Log,
     Max,
     Min,
+    MultivariateDistribution,
     NoOp,
 )
 
@@ -296,6 +299,37 @@ def test_copying():
     a3 = a.copy()
     assert hasattr(a3, "samples_")
     assert a3.samples_ is not a.samples_
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        EmpiricalDistribution([1, 2, 3]),
+        CumulativeDistribution([0, 0.5, 1], [1, 2, 3]),
+        DiscreteDistribution(["A", "B", "C"]),
+        next(MultivariateDistribution("dirichlet", alpha=[1, 2])),
+    ],
+)
+def test_copying_distribution_nodes(node):
+    node.sample(20, random_state=42)
+    original_samples = {ancestor: ancestor.samples_.copy() for ancestor in node.nodes()}
+
+    copied = node.copy()
+    np.testing.assert_array_equal(
+        copied.sample(20, random_state=42), original_samples[node]
+    )
+    copied.sample(20, random_state=0)
+
+    for ancestor, samples in original_samples.items():
+        np.testing.assert_array_equal(ancestor.samples_, samples)
+
+
+def test_copying_deep_graph():
+    node = Constant(1)
+    for _ in range(1000):
+        node = node + 1
+
+    np.testing.assert_array_equal(node.copy().sample(), [1001])
 
 
 def test_constant_arithmetic():
