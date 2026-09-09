@@ -86,7 +86,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"!src/probabilit/{correlation,distributions}.py" = [
+"!src/probabilit/{correlation,distributions,modeling}.py" = [
     "ANN001",
     "ANN002",
     "ANN003",
