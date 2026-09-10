@@ -15,7 +15,7 @@ authors = [
 ]
 license = "GPL-3.0-only"
 dependencies = [
-"numpy>=2",
+"numpy>=2.2",
 "scipy",
 "networkx",
 "seaborn",
