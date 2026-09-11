@@ -57,10 +57,11 @@ from probabilit.modeling import (
     Log,
     Sign,
     Transform,
+    _Samples,
 )
+from probabilit.utils import _Real
 
-type _Real = float | np.integer | np.floating
-type _Parameter = _Real | Constant | AbstractDistribution | Transform
+type _Parameter = _Real | Constant | AbstractDistribution | Transform[_Samples]
 
 
 def Uniform(minimum: _Parameter = 0, maximum: _Parameter = 1) -> Distribution:

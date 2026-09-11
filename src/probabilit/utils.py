@@ -1,10 +1,19 @@
+from __future__ import annotations
+
 import itertools
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 
+type _Real = float | np.integer | np.floating
+type _FloatArray = npt.NDArray[np.float64]
 
-def adjust_minmax_quantiles(quantiles, cumulatives, expected):
+
+def adjust_minmax_quantiles(
+    quantiles: npt.ArrayLike, cumulatives: npt.ArrayLike, expected: _Real
+) -> _FloatArray:
     """Adjust minimum and maximum in `quantiles` so we hit expected value.
 
     Examples
@@ -27,13 +36,15 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
     assert np.isclose(np.min(quantiles), 0)
     assert np.isclose(np.max(quantiles), 1)
 
-    def empirical_mean(quantiles, cumulatives):
+    def empirical_mean(quantiles: _FloatArray, cumulatives: _FloatArray) -> float:
         """Compute the expected value of a histogram."""
         return sp.stats.rv_histogram(
             (np.diff(quantiles), cumulatives), density=False
         ).mean()
 
-    def transform(low_scale, high_scale, cumulatives):
+    def transform(
+        low_scale: _Real, high_scale: _Real, cumulatives: _FloatArray
+    ) -> tuple[np.floating, np.floating]:
         """Return new low and high values in the cumulatives."""
         cumulatives = cumulatives.copy()
         q1, q2 = cumulatives[:2]
@@ -42,7 +53,12 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
         low = min(q2 - np.exp(low_scale) * (q2 - q1), q2 - 1e-6)
         return (low, high)
 
-    def objective(params, quantiles, cumulatives, expected):
+    def objective(
+        params: _FloatArray,
+        quantiles: _FloatArray,
+        cumulatives: _FloatArray,
+        expected: _Real,
+    ) -> np.floating:
         """Objective function to minimize."""
         low_scale, high_scale = params
 
@@ -71,7 +87,10 @@ def adjust_minmax_quantiles(quantiles, cumulatives, expected):
     return cumulatives
 
 
-def zip_args(args, kwargs):
+def zip_args(
+    args: Sequence[Iterable[object]],
+    kwargs: Mapping[str, Iterable[object]],
+) -> Iterator[tuple[Sequence[object], dict[str, object]]]:
     """Zip argument and keyword arguments for repeated function calls.
 
     Examples

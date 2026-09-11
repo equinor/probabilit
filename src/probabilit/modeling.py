@@ -298,7 +298,7 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from typing import TYPE_CHECKING, Self, cast, overload
+from typing import TYPE_CHECKING, Self, TypedDict, cast, overload
 
 import networkx as nx
 import numpy as np
@@ -329,6 +329,16 @@ type _Samples = npt.NDArray[typing.Any]
 type _Node = Node[typing.Any]
 type _NodeInput = complex | np.number | numbers.Number | _Node | OverloadMixin
 type _Quantiles = Sequence[float] | _RealArray
+
+
+class _SampleKwargs(TypedDict, total=False):
+    """Options for `Node.sample` and the `sample_kwargs` argument to `plot`."""
+
+    size: int | np.integer
+    random_state: _RandomState
+    method: str | None
+    correlator: Correlator | str
+    gc_strategy: Collection[_Node] | None
 
 
 # =============================================================================
@@ -1218,8 +1228,8 @@ class BinaryTransform(Transform[_Samples]):
 
     op: Callable[[_Samples, _Samples], _Samples]
 
-    def __init__(self, *args: _NodeInput) -> None:
-        self.parents = tuple(python_to_prob(arg) for arg in args)
+    def __init__(self, left: _NodeInput, right: _NodeInput, /) -> None:
+        self.parents = (python_to_prob(left), python_to_prob(right))
         super().__init__()
 
     def _sample(self, size: int | np.integer | None = None) -> _Samples:
@@ -1433,6 +1443,9 @@ def scalar_transform(
 ) -> Callable[..., ScalarFunctionTransform]:
     """Transform a function, so that when it is called it is converted to
     a ScalarFunctionTransform.
+
+    The callable signature is deliberately unrestricted: nodes can replace
+    the wrapped function's scalar arguments.
     """
 
     @functools.wraps(func)
