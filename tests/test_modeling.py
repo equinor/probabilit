@@ -369,6 +369,12 @@ def test_constant_arithmetic():
     np.testing.assert_allclose(result.sample(), 5**2)
 
 
+@pytest.mark.parametrize("args", [(), (1,), (1, 2, 3)])
+def test_binary_transforms_require_two_operands(args):
+    with pytest.raises(TypeError):
+        Equal(*args)
+
+
 def test_constant_expressions():
     # Test a few longer expressions
     two = Constant(2)

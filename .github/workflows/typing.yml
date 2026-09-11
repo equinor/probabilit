@@ -1,4 +1,4 @@
-name: Run pre-commit
+name: Type check
 
 permissions:
   contents: read
@@ -39,6 +39,6 @@ jobs:
       run: |
         uv sync --group dev
 
-    - name: Run pre-commit
+    - name: Run mypy
       run: |
-        SKIP=no-commit-to-branch uv run pre-commit run --all-files --show-diff-on-failure
+        uv run mypy src

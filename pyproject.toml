@@ -27,6 +27,11 @@ dependencies = [
 dev = [
 "pre-commit",
 "pytest",
+"mypy",
+"scipy-stubs",
+"types-networkx",
+"pandas-stubs",
+"types-seaborn",
 ]
 
 [project.urls]
@@ -86,7 +91,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"!src/probabilit/{correlation,distributions,modeling}.py" = [
+"tests/*" = [
     "ANN001",
     "ANN002",
     "ANN003",
@@ -100,3 +105,9 @@ ignore = [
 [tool.ruff.lint.pylint]
 # PLR0913 (too-many-arguments): distribution APIs require up to six arguments.
 max-args = 6
+
+[tool.mypy]
+python_version = "3.12"
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true

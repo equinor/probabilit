@@ -1,5 +1,11 @@
+from __future__ import annotations
+
 import collections
 from collections.abc import Collection
+from typing import TYPE_CHECKING, Self
+
+if TYPE_CHECKING:
+    from probabilit.modeling import _Node
 
 
 class GarbageCollector:
@@ -9,19 +15,19 @@ class GarbageCollector:
 
     Parameters
     ----------
-    strategy : None or list, optional
-        If None (the default), no nodes are garbage collected. If a list of
-        nodes, then those nodes and the sink are NOT garbage collected. An
-        empty list means all nodes except the sink will be garbage collected.
+    strategy : None or collection, optional
+        If None (the default), no nodes are garbage collected. If a collection
+        of nodes, then those nodes and the sink are NOT garbage collected. An
+        empty collection means all nodes except the sink will be garbage collected.
     """
 
-    def __init__(self, strategy=None) -> None:
+    def __init__(self, strategy: Collection[_Node] | None = None) -> None:
         if not (strategy is None or isinstance(strategy, Collection)):
             raise TypeError(f"`strategy` must be None or a collection, got: {strategy}")
 
         self.strategy = strategy
 
-    def set_sink(self, sink):
+    def set_sink(self, sink: _Node) -> Self:
         """Set the sink node, whose samples will always be kept."""
         self.sink = sink
 
@@ -32,14 +38,16 @@ class GarbageCollector:
         # Initialize the reference counter, keeping track of the number of
         # unsampled children of all nodes. Once a node has no unsampled children
         # (i.e. all children are sampled), that node can safely be GC'ed.
-        self._unsampled_children = collections.defaultdict(int)
+        self._unsampled_children: collections.defaultdict[_Node, int] = (
+            collections.defaultdict(int)
+        )
         for node in self.sink.nodes():
             for parent in node.get_parents():
                 self._unsampled_children[parent] += 1
 
         return self
 
-    def decrement_and_delete(self, node):
+    def decrement_and_delete(self, node: _Node) -> list[_Node]:
         """Decrement the reference counter (number of unsampled children for
         each parent) and delete `.samples_` if the reference count is zero.
 
@@ -49,7 +57,7 @@ class GarbageCollector:
             raise ValueError("You must call 'set_sink' first.")
 
         # Nodes that were garbage collected
-        garbage_collected = []
+        garbage_collected: list[_Node] = []
 
         # The user wants to keep `.samples_` on all nodes => do nothing
         if self.strategy is None:
