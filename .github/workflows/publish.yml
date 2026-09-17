@@ -1,5 +1,8 @@
 name: Publish to PyPI
 
+permissions:
+  contents: read
+
 on:
   push:
     tags:
@@ -13,6 +16,7 @@ jobs:
       name: release  # Matches the PyPI environment
       url: https://pypi.org/p/probabilit
     permissions:
+      contents: read  # Job-level permissions replace the workflow default
       id-token: write  # For trusted publishing
     steps:
 
