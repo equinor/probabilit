@@ -125,7 +125,7 @@ def nearest_correlation_matrix(
     """
     if not isinstance(matrix, np.ndarray):
         raise TypeError("Input argument `matrix` must be np.ndarray.")
-    if not matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1]:
+    if not (matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1]):
         raise ValueError("Input argument `matrix` must be square.")
 
     # If the matrix is already valid, return it back immediately
@@ -224,7 +224,7 @@ class Correlator(abc.ABC):
         if not isinstance(X, np.ndarray):
             raise TypeError("Input argument `X` must be NumPy array.")
         if not X.ndim == 2:
-            raise ValueError("Correlation matrix must be square.")
+            raise ValueError("Input argument `X` must be a 2D array.")
 
         N, K = X.shape
 

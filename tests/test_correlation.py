@@ -12,6 +12,17 @@ class TestNearestCorrelationMatrix:
         with pytest.raises(CorrelatorError, match="did not produce a solution"):
             nearest_correlation_matrix(matrix)
 
+    @pytest.mark.parametrize(
+        "matrix",
+        [
+            pytest.param(np.array([1.0, 0.5]), id="1d"),
+            pytest.param(np.array([[1.0, 0.5, 0.2], [0.5, 1.0, 0.1]]), id="non-square"),
+        ],
+    )
+    def test_non_square_input_is_rejected(self, matrix):
+        with pytest.raises(ValueError, match="must be square"):
+            nearest_correlation_matrix(matrix)
+
     @pytest.mark.parametrize("variables", range(2, 100, 10))
     def test_nearest_correlation_matrix(self, variables):
         """Test that we can cholesky decompose the solution."""
