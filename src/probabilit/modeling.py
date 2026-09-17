@@ -35,8 +35,8 @@ Here is another example demonstrating composite distributions, where an
 argument to one distribution is another distribution:
 
 >>> eggs_per_nest = Distribution("poisson", mu=3)
->>> survivial_prob = Distribution("beta", a=10, b=15)
->>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
+>>> survival_prob = Distribution("beta", a=10, b=15)
+>>> survived = Distribution("binom", n=eggs_per_nest, p=survival_prob)
 >>> survived.sample(9, random_state=rng)
 array([0., 1., 2., 0., 3., 1., 1., 0., 2.])
 
@@ -116,7 +116,7 @@ array([ -4.9730559 , 103.74625257,   3.45199868,  14.50692883,
 Nodes are hashable and can be used in sets, so __hash__ and __eq__ must both
 be defined. Therefore we cannot use `==` for modeling; equality in that context
 has another meaning. Use the Equal node instead. This is only relevant in cases
-when equality operators is part of a model. For distribution defined on real
+when equality operators are part of a model. For distributions defined on real
 numbers (e.g. Normal) equality does not make sense since the probability that two
 floats are equal is zero.
 
@@ -173,7 +173,7 @@ For instance, to create a Dirichlet distribution, we must unpack it as follows:
 >>> d1
 MarginalDistribution(Distribution("dirichlet", alpha=[1, 2]), d=0)
 
-Since the Direchlet distribution is defined on an (n-1) dimensional simplex,
+Since the Dirichlet distribution is defined on an (n-1) dimensional simplex,
 the sum of the marginals is always 1. We can check this by computing:
 
 >>> (d1 + d2).sample(5, random_state=0)
@@ -197,7 +197,7 @@ array([2.52848604, 5.31650094, 5.20076878, 4.06217341, 1.40748585])
 Samplers
 --------
 
-By default sampling uses pseudo-random numbers. To use e.g. latin hybercube
+By default sampling uses pseudo-random numbers. To use e.g. latin hypercube
 sampling, pass the `method` argument into `.sample()`.
 
 >>> dice = EmpiricalDistribution([1, 2, 3, 4, 5, 6], method="closest_observation")
@@ -231,7 +231,7 @@ Setting `gc_strategy=[]` removes `.samples_` on all nodes except the final node:
 >>> final_result.sample(3, random_state=42, gc_strategy=[]).round(3)
 array([2.0730000e+00, 1.0532374e+04, 2.4920000e+00])
 
-Verif that `.samples_` was not set on ancestors:
+Verify that `.samples_` was not set on ancestors:
 
 >>> hasattr(a, "samples_")
 False

@@ -50,13 +50,13 @@ dtype: float64
 
 **Example 2 - Bird survival.**
 This example illustrates _composite distributions_, where the argument to one distribution is another distribution.
-Suppose we have a distribution governing the number off eggs per bird nest for a certain species, and each hatched bird a survival probability.
+Suppose we have a distribution governing the number of eggs per bird nest for a certain species, and each hatched bird has a survival probability.
 What is the distribution of the number of birds that survive per nest?
 
 ```pycon
 >>> eggs_per_nest = Distribution("poisson", mu=3)
->>> survivial_prob = 0.4
->>> survived = Distribution("binom", n=eggs_per_nest, p=survivial_prob)
+>>> survival_prob = 0.4
+>>> survived = Distribution("binom", n=eggs_per_nest, p=survival_prob)
 >>> survived.sample(9, random_state=0)  # Sample a few values only
 array([2., 1., 1., 2., 2., 2., 2., 0., 0.])
 
