@@ -541,6 +541,123 @@ def test_correlations_with_derived_nodes():
     # ancestors (including themselves) are disjoint sets.
 
 
+@pytest.mark.parametrize("correlator", ["imanconover", "permutation", "composite"])
+@pytest.mark.parametrize("gc_strategy", [None, []])
+def test_correlations_preserve_derived_node_relationships(correlator, gc_strategy):
+    a = Distribution("norm")
+    b = 2 * a
+    c = Distribution("norm")
+    # Keep c in the graph without changing the identity.
+    result = b - 2 * a + (c - c)
+    result.correlate(c, b, corr_mat=np.array([[1.0, 0.8], [0.8, 1.0]]))
+
+    samples = result.sample(
+        99, random_state=0, correlator=correlator, gc_strategy=gc_strategy
+    )
+
+    np.testing.assert_array_equal(samples, np.zeros(99))
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected_values"),
+    [
+        pytest.param(lambda event: event + event, [0, 2], id="addition"),
+        pytest.param(lambda event: -event, [-1, 0], id="negation"),
+    ],
+)
+def test_correlations_preserve_boolean_arithmetic(operation, expected_values):
+    event = Distribution("norm") > 0
+    other = Distribution("norm")
+    result = operation(event) + (other - other)
+    result.correlate(event, other, corr_mat=np.array([[1.0, 0.5], [0.5, 1.0]]))
+
+    samples = result.sample(99, random_state=0)
+
+    np.testing.assert_array_equal(np.unique(samples), expected_values)
+
+
+def test_correlations_preserve_tied_derived_samples():
+    a = Distribution("uniform", scale=4)
+    b = Floor(a)
+    c = Distribution("poisson", mu=3)
+    result = b - Floor(a) + (c - c)
+    result.correlate(c, b, corr_mat=np.array([[1.0, 0.8], [0.8, 1.0]]))
+    q = (np.arange(100) + 0.5) / 100
+    quantiles = np.column_stack((q, np.random.default_rng(0).permutation(q)))
+
+    samples = result.sample_from_quantiles(quantiles, random_state=0)
+
+    np.testing.assert_array_equal(samples, np.zeros(100))
+    np.testing.assert_array_equal(np.sort(a.samples_), 4 * q)
+
+
+def test_correlations_preserve_compound_distribution_support():
+    a = Distribution("norm")
+    b = Distribution("uniform", loc=a, scale=1)
+    c = Distribution("norm")
+    result = b - a + (c - c)
+    result.correlate(c, b, corr_mat=np.array([[1.0, 0.8], [0.8, 1.0]]))
+
+    samples = result.sample(99, random_state=0)
+
+    assert np.all((samples >= 0) & (samples <= 1))
+
+
+@pytest.mark.parametrize("derived_first", [False, True])
+def test_correlations_preserve_discrete_compound_support(derived_first):
+    trials = Distribution("poisson", mu=3)
+    successes = Distribution("binom", n=trials, p=0.5)
+    other = Distribution("poisson", mu=3)
+    result = successes - trials + (other - other)
+    variables = (successes, other) if derived_first else (other, successes)
+    result.correlate(*variables, corr_mat=np.array([[1.0, 0.8], [0.8, 1.0]]))
+
+    samples = result.sample(99, random_state=0)
+
+    assert np.all(samples <= 0)
+
+
+def test_correlations_preserve_multivariate_relationships():
+    a, b = MultivariateDistribution("dirichlet", alpha=[1, 2])
+    c = Distribution("norm")
+    result = a + b + (c - c)
+    result.correlate(c, a, corr_mat=np.array([[1.0, 0.8], [0.8, 1.0]]))
+
+    samples = result.sample(99, random_state=0)
+
+    np.testing.assert_allclose(samples, np.ones(99))
+
+
+@pytest.mark.parametrize(
+    "make_derived",
+    [
+        pytest.param(lambda a: 2 * a, id="transform"),
+        pytest.param(lambda a: Distribution("norm", loc=a), id="compound"),
+    ],
+)
+def test_correlations_require_permutations_for_derived_nodes(make_derived):
+    a = Distribution("norm")
+    b = make_derived(a)
+    c = Distribution("norm")
+    result = NoOp(c, b)
+    result.correlate(c, b, corr_mat=np.array([[1.0, 0.8], [0.8, 1.0]]))
+
+    with pytest.raises(ValueError, match="not a permutation of its samples"):
+        result.sample(99, random_state=0, correlator="cholesky")
+
+
+def test_cholesky_correlations_with_constant_parameters():
+    a = Distribution("norm", scale=Constant(3) ** 2)
+    b = Distribution("norm")
+    result = NoOp(a, b)
+    corr_mat = np.array([[1.0, 0.8], [0.8, 1.0]])
+    result.correlate(a, b, corr_mat=corr_mat)
+
+    result.sample(99, random_state=0, correlator="cholesky")
+
+    np.testing.assert_allclose(np.corrcoef(a.samples_, b.samples_), corr_mat)
+
+
 def test_correlations_with_truncated_lognorm():
     # This is an example where the user wants to correlate
     # truncated lognomal variables with something else.
