@@ -514,6 +514,8 @@ class Node[SampleT: (_Samples, None)](abc.ABC):
             A Correlator instance or a string in {"cholesky", "imanconover",
            "permutation", "composite"}. The default is "composite", which first
             runs Iman-Conover, then runs the Permutation correlator on the result.
+            Derived and compound nodes require a correlator that only permutes
+            samples, so their ancestors can follow the same reordering.
         gc_strategy : None or list, optional
             If None, no garbage collection is performed and the attribute
             `.samples_` will be set on all nodes. If an empty list [], then
@@ -760,7 +762,30 @@ class Node[SampleT: (_Samples, None)](abc.ABC):
                 samples_output = group_correlator(samples_input)
 
                 for i, sample in zip(idxs, samples_output.T, strict=True):
-                    corr_variables[i].samples_ = np.copy(sample)
+                    variable = corr_variables[i]
+                    if variable._is_initial_sampling_node():
+                        variable.samples_ = np.copy(sample)
+                        continue
+
+                    # Recover a one-to-one permutation, including tied values.
+                    before_order = np.argsort(variable.samples_, stable=True)
+                    after_order = np.argsort(sample, stable=True)
+                    if not np.array_equal(
+                        variable.samples_[before_order], sample[after_order]
+                    ):
+                        raise ValueError(
+                            f"Correlator output for {type(variable).__name__} is not "
+                            "a permutation of its samples. Derived and compound "
+                            "nodes require a sample-permuting correlator."
+                        )
+
+                    permutation = np.empty_like(before_order)
+                    permutation[after_order] = before_order
+                    for node in set(variable.nodes()) - {variable}:
+                        if node not in garbage_collected and node.samples_ is not None:
+                            node.samples_ = node.samples_[permutation]
+                    # Retain the correlator's dtype for downstream arithmetic.
+                    variable.samples_ = np.copy(sample)
 
         # Sample all the way to the end. In this graph:
         # A ----> B ---> [C] ---> D
@@ -791,6 +816,12 @@ class Node[SampleT: (_Samples, None)](abc.ABC):
         When `.correlate(*variables)` is called on a node, the variables must
         be ancestors of that node. The order of the variables should match the
         order of the rows/columns in the correlation matrix.
+
+        Variables must have disjoint ancestor graphs. For transforms and
+        compound distributions, retained ancestor samples follow the same
+        permutation as the correlated variable, preserving graph relationships.
+        Correlators that change sample values, such as Cholesky, are only
+        supported for initial distributions (no distribution ancestors).
 
         Examples
         --------
