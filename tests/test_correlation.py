@@ -1,7 +1,26 @@
+import subprocess
+import sys
+from textwrap import dedent
+
 import numpy as np
 import pytest
 
 from probabilit.correlation import CorrelatorError, nearest_correlation_matrix
+
+
+def test_sampling_without_cvxpy():
+    code = dedent("""
+        import sys
+        sys.modules["cvxpy"] = None
+
+        import numpy as np
+        from probabilit import Normal
+
+        x, y = Normal(), Normal()
+        corr_mat = np.array([[1.0, 0.5], [0.5, 1.0]])
+        (x + y).correlate(x, y, corr_mat=corr_mat).sample(10, random_state=0)
+    """)
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=60)
 
 
 class TestNearestCorrelationMatrix:
