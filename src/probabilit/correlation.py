@@ -33,30 +33,16 @@ Induce correlations
 from __future__ import annotations
 
 import abc
-import contextlib
 import dataclasses
 import itertools
-import os
-import pathlib
+import logging
+import warnings
 from collections.abc import Sequence
 from typing import Any, Literal, Self
 
 import numpy as np
 import numpy.typing as npt
 import scipy as sp
-
-# CVXPY prints error messages about incompatible ortools version during import.
-# Since we use the SCS solver and not GLOP/PDLP (which need ortools), these errors
-# are irrelevant and would only confuse users. We suppress them by redirecting
-# stdout/stderr during import.
-# https://github.com/cvxpy/cvxpy/issues/2470
-with (
-    pathlib.Path(os.devnull).open("w", encoding="utf-8") as devnull,
-    contextlib.redirect_stdout(devnull),
-    contextlib.redirect_stderr(devnull),
-):
-    import cvxpy as cp
-
 
 type _RealArray = npt.NDArray[np.integer | np.floating]
 type _RandomState = (
@@ -142,6 +128,18 @@ def nearest_correlation_matrix(
         raise TypeError("Input argument `weights` must be np.ndarray.")
     if not (H.shape == G.shape):
         raise ValueError("Argument `weights` must have same shape as `matrix`.")
+
+    def mute_import_log(_record: logging.LogRecord) -> bool:
+        return False
+
+    # CVXPY probes unused solvers even though we only use SCS.
+    logger = logging.getLogger("__cvxpy__")
+    logger.addFilter(mute_import_log)
+    try:
+        with warnings.catch_warnings(action="ignore"):
+            import cvxpy as cp  # noqa: PLC0415
+    finally:
+        logger.removeFilter(mute_import_log)
 
     # To constrain Y to be Positive Symmetric Definite (PSD), you need to
     # either set PSD=True here, or add the special constraint 'Y >> 0'. See:
