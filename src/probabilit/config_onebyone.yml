@@ -1,0 +1,4 @@
+defaults:
+  Steel_Cost: 800000
+  Maintenance_Cost: 0.5
+  Adult: "yes"
