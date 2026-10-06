@@ -68,12 +68,9 @@ It is possible to convert distributions to scipy objects
 >>> dist.rvs(5, random_state=42)
 array([8.49671415, 7.8617357 , 8.64768854, 9.52302986, 7.76584663])
 
-The `.nodes()` iterator yields the expression and all its ancestors. Shared
-nodes can occur more than once, so convert the iterator to a set to obtain the
-unique nodes:
+The `.nodes()` iterator yields the expression and each of its ancestors once:
 
->>> unique_nodes = set(expression.nodes())
->>> len(unique_nodes)
+>>> len(list(expression.nodes()))
 8
 
 The structure is easier to inspect as a tree:
@@ -465,23 +462,26 @@ class Node[SampleT: (_Samples, None)](abc.ABC):
         return copy.deepcopy(self, memo)
 
     def nodes(self) -> Iterator[_Node]:
-        """Yields `self` and all ancestors using depth-first-search.
+        """Yields `self` and each ancestor once, using depth-first search.
 
         Examples
         --------
-        >>> expression = Distribution("norm") -  2**Constant(2)
-        >>> for node in expression.nodes():
+        >>> a = Distribution("norm")
+        >>> for node in (a * a - 2).nodes():
         ...     print(node)
-        Subtract(Distribution("norm"), Power(Constant(2), Constant(2)))
-        Power(Constant(2), Constant(2))
+        Subtract(Multiply(Distribution("norm"), Distribution("norm")), Constant(2))
         Constant(2)
-        Constant(2)
+        Multiply(Distribution("norm"), Distribution("norm"))
         Distribution("norm")
         """
-        queue: list[_Node] = [(self)]
-        while queue:
-            yield (node := queue.pop())
-            queue.extend(node.get_parents())
+        seen: set[_Node] = set()
+        stack: list[_Node] = [self]
+        while stack:
+            node = stack.pop()
+            if node not in seen:
+                seen.add(node)
+                yield node
+                stack.extend(node.get_parents())
 
     def num_distribution_nodes(self) -> int:
         """Number of unique ancestor nodes that are distribution nodes."""

@@ -332,6 +332,14 @@ def test_copying_deep_graph():
     np.testing.assert_array_equal(node.copy().sample(), [1001])
 
 
+def test_reused_subexpressions_are_traversed_once():
+    x = Distribution("norm")
+    for _ in range(20):
+        x = x + x  # doubles the number of paths to every ancestor
+    num_nodes = len(list(x.nodes()))
+    assert num_nodes == 21
+
+
 def test_constant_arithmetic():
     # Test that converstion with int works
     two = Constant(2)

@@ -41,6 +41,17 @@ def test_garbage_collector():
     assert hasattr(the_result, "samples_")
 
 
+def test_garbage_collector_shared_nodes():
+    a = Distribution("norm")
+    b = Distribution("norm", loc=a)
+    result = b * b  # a is reached through b twice
+
+    result.sample(9, random_state=42, gc_strategy=[])
+
+    assert not hasattr(a, "samples_")
+    assert not hasattr(b, "samples_")
+
+
 def test_garbage_collector_large_graph():
     sampling_nodes = []
 
