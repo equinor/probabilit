@@ -336,7 +336,8 @@ def test_reused_subexpressions_are_traversed_once():
     x = Distribution("norm")
     for _ in range(20):
         x = x + x  # doubles the number of paths to every ancestor
-    assert len(list(x.nodes())) == 21
+    num_nodes = len(list(x.nodes()))
+    assert num_nodes == 21
 
 
 def test_constant_arithmetic():
