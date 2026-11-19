@@ -9,12 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from numbers import Number
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
-import seaborn as sns
 
 from probabilit.modeling import (
     Node,
@@ -24,6 +22,9 @@ from probabilit.modeling import (
     _SampleKwargs,
     _Samples,
 )
+
+if TYPE_CHECKING:
+    import seaborn as sns
 
 
 def plot(
@@ -55,6 +56,10 @@ def plot(
 
     >>> pairgrid = plot(a, sample_kwargs={'size':99})
     """
+    # Imported here so that `import probabilit` does not load plotting libraries
+    import pandas as pd  # noqa: PLC0415
+    import seaborn as sns  # noqa: PLC0415
+
     # Create an NoOp node, then copy the NoOp (which copies all parents too)
     # This prevents us from mutating the input arguments
     no_operation = NoOp(*variables).copy()
