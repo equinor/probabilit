@@ -1299,7 +1299,6 @@ wheels = [
 
 [[package]]
 name = "probabilit"
-version = "0.5.4"
 source = { editable = "." }
 dependencies = [
     { name = "cvxpy" },
